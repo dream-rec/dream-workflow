@@ -1,0 +1,11 @@
+node_modules/
+.env
+.env.*
+.DS_Store
+.cursor/
+.trellis/
+.git/
+.github/
+npm-debug.log*
+*.tgz
+verify-fixture/
