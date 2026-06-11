@@ -1,0 +1,118 @@
+import path from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { appendBlockOnce, pathExists, readTextIfExists, writeTextFile } from './files.js';
+import { trellisPlatformFlag } from './platforms.js';
+
+const DREAM_WF_MARKER = '<!-- dream-wf:profile:v1 -->';
+
+export async function detectTrellis(rootDir) {
+  const trellisDir = path.join(rootDir, '.trellis');
+  const workflowPath = path.join(trellisDir, 'workflow.md');
+  const scriptsDir = path.join(trellisDir, 'scripts');
+
+  return {
+    trellisDir,
+    workflowPath,
+    exists: await pathExists(trellisDir),
+    hasWorkflow: await pathExists(workflowPath),
+    hasScripts: await pathExists(scriptsDir),
+    cli: commandExists('trellis')
+  };
+}
+
+export async function ensureTrellisInitialized(rootDir, options) {
+  const state = await detectTrellis(rootDir);
+  if (state.exists) {
+    return { ...state, initialized: true, initCommand: undefined };
+  }
+
+  const platformFlag = trellisPlatformFlag(options.platform);
+  const initCommand = `trellis init -u ${options.developer ?? '<your-name>'} ${platformFlag}`;
+
+  if (!options.installDeps) {
+    return { ...state, initialized: false, initCommand };
+  }
+
+  if (!options.developer) {
+    throw new Error('Pass --developer <name> when using --install-deps so dream-wf can run trellis init non-interactively.');
+  }
+
+  if (!state.cli) {
+    throw new Error('trellis is not installed. Install it with: npm install -g @mindfoldhq/trellis@latest');
+  }
+
+  const result = spawnSync('trellis', ['init', '-u', options.developer, platformFlag], {
+    cwd: rootDir,
+    stdio: 'inherit'
+  });
+
+  if (result.status !== 0) {
+    throw new Error(`trellis init failed with exit code ${result.status ?? 'unknown'}.`);
+  }
+
+  return { ...(await detectTrellis(rootDir)), initialized: true, initCommand };
+}
+
+export async function installTrellisProfile(rootDir) {
+  const workflowPath = path.join(rootDir, '.trellis', 'workflow.md');
+  const existing = await readTextIfExists(workflowPath);
+  if (!existing) {
+    return {
+      changed: false,
+      action: 'skipped',
+      path: workflowPath,
+      reason: '.trellis/workflow.md not found. Run trellis init first.'
+    };
+  }
+
+  return appendBlockOnce(workflowPath, DREAM_WF_MARKER, dreamWorkflowBlock());
+}
+
+export async function writeSpecPolicy(rootDir, name, contents) {
+  return writeTextFile(path.join(rootDir, '.trellis', 'spec', 'guides', name), contents);
+}
+
+export function commandExists(command) {
+  const result = spawnSync('sh', ['-c', 'command -v "$1" >/dev/null 2>&1', 'sh', command], {
+    stdio: 'ignore'
+  });
+  return result.status === 0;
+}
+
+function dreamWorkflowBlock() {
+  return [
+    DREAM_WF_MARKER,
+    '',
+    '## Dream WF Profile',
+    '',
+    'This repository uses `dream-wf` as a Trellis custom patch profile. Trellis remains the source of truth for task lifecycle, specs, workflow state, before-dev, check, update-spec, break-loop, sub-agent context injection, and finish-work.',
+    '',
+    '### Dream WF Planning Override',
+    '',
+    'When a request enters Trellis planning, keep the native Trellis task artifacts and lifecycle, but use the `dream-wf-grill-prd` skill as the PRD clarification method before implementation.',
+    '',
+    'Rules:',
+    '',
+    '- Keep Trellis task creation, `prd.md`, `design.md`, `implement.md`, `implement.jsonl`, and `check.jsonl`.',
+    '- Do not use Trellis brainstorm as an open-ended interview style when `dream-wf-grill-prd` is available.',
+    '- Do not start planning by writing a speculative initial PRD. First inspect available context, then ask the first grill-me question.',
+    '- Use grill-me behavior for requirement discovery: ask one question at a time, provide 2-3 options and a recommended answer, and inspect code/docs/config before asking the user.',
+    '- Update `prd.md` only after a user answer, confirmed existing fact, or explicit decision is available.',
+    '- Treat PRD confirmation as separate from task creation consent.',
+    '- Generate initial spec candidates from user answers, PRD decisions, and verified project/code facts; require user review before treating them as stable conventions.',
+    '- Continue using `trellis-before-dev`, `trellis-check`, `trellis-update-spec`, and `trellis-break-loop` without replacing them.',
+    '',
+    '### Dream WF MCP Tool Policy',
+    '',
+    'Before searching, classify the need:',
+    '',
+    '- Codebase semantic understanding: prefer `fast-context-mcp` / `fast_context_search`.',
+    '- Exact known symbols or files: use exact search or direct reads.',
+    '- External docs, live technical information, and web pages: prefer `grok-search-mcp` / `web_search` or `web_fetch`.',
+    '- If the preferred MCP is unavailable, state the fallback reason before using another tool.',
+    '',
+    'Read `.trellis/spec/guides/dream-wf-mcp-policy.md` and `.trellis/spec/guides/dream-wf-prd-policy.md` when planning or starting implementation.',
+    '',
+    '<!-- /dream-wf:profile:v1 -->'
+  ].join('\n');
+}

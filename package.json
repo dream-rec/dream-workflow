@@ -1,0 +1,24 @@
+{
+  "name": "dream-wf",
+  "version": "0.1.0",
+  "description": "Personal Trellis workflow patch installer for Cursor, Claude Code, and OpenCode.",
+  "type": "module",
+  "bin": {
+    "dream-wf": "./bin/dream-wf.js"
+  },
+  "scripts": {
+    "check": "node --check bin/dream-wf.js && node --check src/cli/index.js && node --check src/lib/files.js && node --check src/lib/platforms.js && node --check src/lib/trellis.js && node --check src/lib/json.js && node --check src/doctor/index.js && node --check src/deps/index.js && node --check src/platforms/shared.js && node --check src/platforms/cursor/index.js && node --check src/platforms/claude-code/index.js && node --check src/platforms/opencode/index.js && node --check templates/hooks/opencode/dream-wf-guard.js"
+  },
+  "keywords": [
+    "trellis",
+    "workflow",
+    "cursor",
+    "claude",
+    "opencode",
+    "mcp"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  }
+}
