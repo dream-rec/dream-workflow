@@ -24,6 +24,12 @@ Prefer `grok-search-mcp` for external information:
 
 Built-in web tools are fallback only. State the fallback reason before using them.
 
+## Accuracy Requirements
+
+- Do not guess or fabricate unknown facts, APIs, package behavior, release status, or external documentation.
+- If model knowledge or project context is insufficient, actively search with the preferred web MCP tools or ask the user for authoritative information.
+- Continue searching or asking until the information is accurate enough to proceed safely.
+
 ## Security
 
 Do not commit API keys, tokens, or MCP secrets into project files.

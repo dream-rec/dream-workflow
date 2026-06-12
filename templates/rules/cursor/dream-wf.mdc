@@ -36,3 +36,21 @@ Do not start implementation until the active Trellis task has a confirmed PRD. P
 - Use `fast-context-mcp` for codebase semantic context.
 - Use `grok-search-mcp` for external docs, live web information, and webpage fetch.
 - If a preferred MCP is unavailable, state the fallback reason before using another tool.
+
+## Accuracy Policy
+
+- Do not guess or fabricate facts, APIs, package behavior, release status, or external documentation when the answer is not already known from model knowledge or project context.
+- When current or missing knowledge is required, actively use the preferred web search/fetch MCP tools, or ask the user for authoritative information.
+- Continue searching or asking until the information is accurate enough to proceed safely.
+
+## Language Policy
+
+- Write README and project documentation in Chinese.
+- Write code comments in Chinese when comments are necessary.
+- Avoid obvious comments; only explain non-obvious intent, constraints, or trade-offs.
+
+## Naming Policy
+
+- Prefer concise file names.
+- Use one word when one word clearly describes the purpose, such as `pipeline`.
+- When multiple words are necessary, use lowercase snake_case, such as `paper_extract`.

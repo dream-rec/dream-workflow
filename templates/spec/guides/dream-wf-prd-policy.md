@@ -13,6 +13,9 @@ This project uses `dream-wf` on top of Trellis.
 - Update `prd.md` only after each confirmed answer, confirmed existing fact, or explicit decision.
 - Treat task creation consent and implementation approval as separate gates.
 - Do not start implementation until the PRD is confirmed.
+- Write README and project documentation in Chinese.
+- Write code comments in Chinese when comments are necessary, and avoid obvious comments.
+- Prefer concise file names: one word when clear, or lowercase snake_case for necessary multi-word names.
 
 ## Initial Spec Candidates
 

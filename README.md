@@ -1,17 +1,17 @@
 # DREAM-WORKFLOW
 
-Personal Trellis workflow patch installer for Cursor, Claude Code, and OpenCode.
+面向 Cursor、Claude Code 和 OpenCode 的个人 Trellis workflow patch 安装器。
 
-`dream-wf` does not replace Trellis. It installs a small custom profile on top of Trellis:
+`dream-wf` 不替代 Trellis。它是在 Trellis 之上安装一组项目级个人 workflow 约束：
 
-- PRD clarification uses grill-me behavior automatically; the user does not need to mention `dream-wf`.
-- Trellis task lifecycle, specs, hooks, skills, sub-agents, checks, and finish-work remain native.
-- Initial spec candidates combine user answers, PRD decisions, and verified project facts.
-- Code semantic search prefers `fast-context-mcp`.
-- External docs and live web search prefer `grok-search-mcp`.
-- Strict mode guards against implementation before active task / PRD confirmation.
+- PRD 澄清自动采用 grill-me 风格，用户不需要显式提到 `dream-wf`。
+- Trellis 原生的任务生命周期、spec、hooks、skills、sub-agents、checks 和 finish-work 保持不变。
+- 初始 spec 候选内容来自用户回答、PRD 决策和已验证的项目事实。
+- 代码语义检索优先使用 `fast-context-mcp`。
+- 外部文档和实时网络检索优先使用 `grok-search-mcp`。
+- strict 模式会阻止无活跃任务或 PRD 未确认时的实现类操作。
 
-## Install
+## 安装
 
 ```bash
 npx dream-wf init -p cursor
@@ -19,9 +19,9 @@ npx dream-wf init -p claude
 npx dream-wf init -p opencode
 ```
 
-`-p` is required. Default install is project-level and default mode is `strict`.
+`-p` 是必填参数。默认安装范围是项目级，默认模式是 `strict`。
 
-## Commands
+## 命令
 
 ```bash
 npx dream-wf init -p cursor
@@ -29,7 +29,7 @@ npx dream-wf doctor -p cursor
 npx dream-wf update -p cursor
 ```
 
-Options:
+参数：
 
 ```bash
 -p cursor|claude|opencode
@@ -38,15 +38,15 @@ Options:
 --developer <name>
 ```
 
-## Trellis Dependency
+## Trellis 依赖
 
-Source: https://github.com/mindfold-ai/trellis
+来源：https://github.com/mindfold-ai/trellis
 
 ```bash
 npm install -g @mindfoldhq/trellis@latest
 ```
 
-Initialize Trellis first, or let `dream-wf` tell you the exact command:
+先初始化 Trellis，或者让 `dream-wf` 输出对应的初始化命令：
 
 ```bash
 trellis init -u your-name --cursor
@@ -54,27 +54,27 @@ trellis init -u your-name --claude
 trellis init -u your-name --opencode
 ```
 
-## Grill Me Dependency
+## Grill Me 依赖
 
-Source: https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md
+来源：https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md
 
-`dream-wf` installs a project-local `dream-wf-grill-prd` skill that vendors the behavior:
+`dream-wf` 会安装项目级 `dream-wf-grill-prd` skill，用于复用 grill-me 的交互风格：
 
-- Ask one question at a time.
-- Provide options and a recommended answer.
-- Inspect code before asking when possible.
-- Update `prd.md` after each answer.
-- Require explicit PRD confirmation before implementation.
+- 一次只问一个问题。
+- 给出选项和推荐答案。
+- 尽可能先检查代码再提问。
+- 用户回答后更新 `prd.md`。
+- 实现开始前必须获得明确的 PRD 确认。
 
 ## Fast Context MCP
 
-Source: https://github.com/SammySnake-d/fast-context-mcp
+来源：https://github.com/SammySnake-d/fast-context-mcp
 
 ```bash
 npm install @sammysnake/fast-context-mcp
 ```
 
-Example MCP server config:
+MCP server 配置示例：
 
 ```json
 {
@@ -94,9 +94,9 @@ Example MCP server config:
 
 ## Grok Search MCP
 
-Source: https://github.com/GuDaStudio/GrokSearch
+来源：https://github.com/GuDaStudio/GrokSearch
 
-Requires Python 3.10+ and `uv` / `uvx`.
+需要 Python 3.10+ 和 `uv` / `uvx`。
 
 ```json
 {
@@ -119,11 +119,11 @@ Requires Python 3.10+ and `uv` / `uvx`.
 }
 ```
 
-Do not commit real API keys or MCP secrets into project files.
+不要把真实 API key、token 或 MCP secret 提交到项目文件中。
 
-## Generated Files
+## 生成文件
 
-Cursor:
+Cursor：
 
 - `.cursor/rules/dream-wf.mdc`
 - `.cursor/skills/dream-wf-grill-prd/SKILL.md`
@@ -131,7 +131,7 @@ Cursor:
 - `.cursor/hooks/dream-wf-guard.py`
 - `.cursor/hooks.json`
 
-Claude Code:
+Claude Code：
 
 - `CLAUDE.md` dream-wf entry block
 - `.claude/skills/dream-wf-grill-prd/SKILL.md`
@@ -139,27 +139,27 @@ Claude Code:
 - `.claude/hooks/dream-wf-guard.py`
 - `.claude/settings.json`
 
-OpenCode:
+OpenCode：
 
 - `AGENTS.md` dream-wf entry block
 - `.opencode/skills/dream-wf-grill-prd/SKILL.md`
 - `.opencode/skills/dream-wf-mcp-policy/SKILL.md`
 - `.opencode/plugins/dream-wf-guard.js`
 
-Trellis:
+Trellis：
 
-- Appends a `Dream WF Profile` section to `.trellis/workflow.md`.
-- Installs `.trellis/spec/guides/dream-wf-prd-policy.md`.
-- Installs `.trellis/spec/guides/dream-wf-mcp-policy.md`.
+- 向 `.trellis/workflow.md` 追加 `Dream WF Profile` 区块。
+- 安装 `.trellis/spec/guides/dream-wf-prd-policy.md`。
+- 安装 `.trellis/spec/guides/dream-wf-mcp-policy.md`。
 
-## Strict Mode
+## Strict 模式
 
-Strict mode blocks mutating actions when:
+strict 模式会阻止以下变更类操作：
 
-- No active Trellis task exists.
-- A task is still in `planning` and `prd.md` is not confirmed.
+- 当前没有活跃 Trellis task。
+- task 仍处于 `planning` 状态，且 `prd.md` 尚未确认。
 
-Mark PRD confirmation with one of these markers in `prd.md`:
+可以在 `prd.md` 中使用以下任一标记表示 PRD 已确认：
 
 ```markdown
 PRD confirmed
@@ -167,12 +167,10 @@ confirmed: true
 status: confirmed
 ```
 
-## Security
+## 安全检查
 
-Run doctor before committing:
+提交前运行 doctor：
 
 ```bash
 npx dream-wf doctor -p cursor
 ```
-
-The doctor checks for obvious MCP secret patterns in project files and reports suspicious findings.
