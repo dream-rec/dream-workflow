@@ -38,7 +38,7 @@ npx dream-wf update -p cursor
 --developer <name>
 ```
 
-## Trellis 依赖
+## Trellis 
 
 来源：https://github.com/mindfold-ai/trellis
 
@@ -54,7 +54,7 @@ trellis init -u your-name --claude
 trellis init -u your-name --opencode
 ```
 
-## Grill Me 依赖
+## Grill Me 
 
 来源：https://github.com/mattpocock/skills/blob/main/skills/productivity/grill-me/SKILL.md
 
@@ -119,7 +119,6 @@ MCP server 配置示例：
 }
 ```
 
-不要把真实 API key、token 或 MCP secret 提交到项目文件中。
 
 ## 生成文件
 
