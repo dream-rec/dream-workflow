@@ -1,91 +1,157 @@
-import process from 'node:process';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { assertSupportedPlatform, normalizePlatform } from '../lib/platforms.js';
-import { ensureTrellisInitialized, installTrellisProfile } from '../lib/trellis.js';
-import { formatRelative } from '../lib/files.js';
-import { installCursor } from '../platforms/cursor/index.js';
-import { installClaudeCode } from '../platforms/claude-code/index.js';
-import { installOpenCode } from '../platforms/opencode/index.js';
-import { runDoctor, formatDoctorReport } from '../doctor/index.js';
+import process from "node:process";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import {
+  assertSupportedPlatform,
+  normalizePlatform,
+} from "../lib/platforms.js";
+import {
+  ensureTrellisInitialized,
+  installTrellisProfile,
+} from "../lib/trellis.js";
+import { formatRelative } from "../lib/files.js";
+import {
+  resolveSkills,
+  resolveMcps,
+  defaultSkillIds,
+  defaultMcpIds,
+} from "../lib/catalog.js";
+import { installCursor } from "../platforms/cursor/index.js";
+import { installClaudeCode } from "../platforms/claude-code/index.js";
+import { installOpenCode } from "../platforms/opencode/index.js";
+import { installCodex } from "../platforms/codex/index.js";
+import { runDoctor, formatDoctorReport } from "../doctor/index.js";
+import { runInteractive } from "../tui/index.js";
 
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+const packageRoot = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "..",
+  "..",
+);
 
 export async function run(argv) {
-  const { command, options } = parseArgs(argv);
+  // 无参数或仅 --help 以外无 subcommand 时，进入交互式 TUI。
+  if (argv.length === 0) {
+    const interactive = await runInteractive();
+    if (!interactive) {
+      return;
+    }
+    await init(process.cwd(), interactive);
+    return;
+  }
 
-  if (options.help || command === 'help') {
+  // 优先处理全局 help 标志，避免被当作 command 或要求 -p。
+  if (argv.includes("--help") || argv.includes("-h")) {
     writeOutput(helpText());
     return;
   }
 
-  if (!command) {
-    throw new Error(`Missing command.\n\n${helpText()}`);
+  const { command, options } = parseArgs(argv);
+
+  if (!command || command === "help") {
+    writeOutput(helpText());
+    return;
+  }
+
+  if (command === "interactive" || command === "tui") {
+    const interactive = await runInteractive();
+    if (!interactive) {
+      return;
+    }
+    await init(process.cwd(), interactive);
+    return;
   }
 
   const platform = normalizePlatform(options.platform);
   assertSupportedPlatform(platform);
 
   const rootDir = process.cwd();
-  const mode = options.mode ?? 'strict';
-  if (!['strict', 'advisory'].includes(mode)) {
-    throw new Error('Invalid --mode. Use strict or advisory.');
+  const mode = options.mode ?? "strict";
+  if (!["strict", "advisory"].includes(mode)) {
+    throw new Error("Invalid --mode. Use strict or advisory.");
   }
 
-  if (command === 'init') {
+  if (command === "init") {
     await init(rootDir, { ...options, platform, mode });
     return;
   }
 
-  if (command === 'doctor') {
+  if (command === "doctor") {
     const report = await runDoctor(rootDir, platform);
     writeOutput(formatDoctorReport(report));
     return;
   }
 
-  if (command === 'update') {
+  if (command === "update") {
     await init(rootDir, { ...options, platform, mode });
     return;
   }
 
-  if (command === 'uninstall') {
-    throw new Error('uninstall is planned but not implemented in this MVP. Remove dream-wf generated files manually if needed.');
+  if (command === "uninstall") {
+    throw new Error(
+      "uninstall is planned but not implemented in this MVP. Remove dream-wf generated files manually if needed.",
+    );
   }
 
   throw new Error(`Unknown command "${command}".\n\n${helpText()}`);
 }
 
 async function init(rootDir, options) {
+  // 来自 TUI 的 options 已带 skills/mcps；来自 CLI 的 options 需要解析。
+  const platform = options.platform;
+  const mode = options.mode ?? "strict";
+
+  const skillIds = options.skillIds ?? defaultSkillIds();
+  const mcpIds = options.mcpIds ?? defaultMcpIds();
+  const skills = resolveSkills(
+    options.skills ? options.skills.map((s) => s.id) : skillIds,
+  );
+  const mcps = resolveMcps(
+    options.mcps ? options.mcps.map((m) => m.id) : mcpIds,
+  );
+
+  const initOptions = { ...options, platform, mode, skills, mcps };
+
   writeOutput(formatBanner());
 
   const results = [];
-  const trellis = await ensureTrellisInitialized(rootDir, options);
+  const trellis = await ensureTrellisInitialized(rootDir, initOptions);
 
   if (!trellis.initialized) {
-    writeOutput([
-      'Trellis is not initialized in this project.',
-      `Run: ${trellis.initCommand}`,
-      'Then rerun dream-wf init.'
-    ].join('\n'));
+    writeOutput(
+      [
+        "Trellis is not initialized in this project.",
+        `Run: ${trellis.initCommand}`,
+        "Then rerun dream-wf init.",
+      ].join("\n"),
+    );
     return;
   }
 
   results.push(await installTrellisProfile(rootDir));
 
-  if (options.platform === 'cursor') {
-    results.push(...await installCursor(packageRoot, rootDir, options));
+  if (platform === "cursor") {
+    results.push(...(await installCursor(packageRoot, rootDir, initOptions)));
   }
 
-  if (options.platform === 'claude') {
-    results.push(...await installClaudeCode(packageRoot, rootDir, options));
+  if (platform === "claude") {
+    results.push(
+      ...(await installClaudeCode(packageRoot, rootDir, initOptions)),
+    );
   }
 
-  if (options.platform === 'opencode') {
-    results.push(...await installOpenCode(packageRoot, rootDir, options));
+  if (platform === "opencode") {
+    results.push(...(await installOpenCode(packageRoot, rootDir, initOptions)));
   }
 
-  const report = await runDoctor(rootDir, options.platform);
-  writeOutput(`${formatInstallReport(rootDir, results)}\n\n${formatDoctorReport(report)}`);
+  if (platform === "codex") {
+    results.push(...(await installCodex(packageRoot, rootDir, initOptions)));
+  }
+
+  const report = await runDoctor(rootDir, platform);
+  writeOutput(
+    `${formatInstallReport(rootDir, results)}\n\n${formatDoctorReport(report)}`,
+  );
 }
 
 function parseArgs(argv) {
@@ -95,55 +161,85 @@ function parseArgs(argv) {
   for (let index = 0; index < rest.length; index += 1) {
     const arg = rest[index];
 
-    if (arg === '--help' || arg === '-h') {
+    if (arg === "--help" || arg === "-h") {
       options.help = true;
       continue;
     }
 
-    if (arg === '--install-deps') {
+    if (arg === "--install-deps") {
       options.installDeps = true;
       continue;
     }
 
-    if (arg === '--skip-deps') {
+    if (arg === "--skip-deps") {
       options.installDeps = false;
       continue;
     }
 
-    if (arg === '--yes' || arg === '-y') {
+    if (arg === "--yes" || arg === "-y") {
       options.yes = true;
       continue;
     }
 
-    if (arg === '-p') {
+    if (arg === "--skip-skills") {
+      options.skillIds = [];
+      continue;
+    }
+
+    if (arg === "--skip-mcps") {
+      options.mcpIds = [];
+      continue;
+    }
+
+    if (arg === "-p") {
       const value = rest[index + 1];
-      if (!value || value.startsWith('-')) {
-        throw new Error('Missing value for -p. Use -p <cursor|claude|opencode>.');
+      if (!value || value.startsWith("-")) {
+        throw new Error(
+          "Missing value for -p. Use -p <cursor|claude|opencode|codex>.",
+        );
       }
       options.platform = value;
       index += 1;
       continue;
     }
 
-    if (arg === '--mode') {
+    if (arg === "--mode") {
       options.mode = readOptionValue(arg, rest, index);
       index += 1;
       continue;
     }
 
-    if (arg.startsWith('--mode=')) {
-      options.mode = arg.slice('--mode='.length);
+    if (arg.startsWith("--mode=")) {
+      options.mode = arg.slice("--mode=".length);
       continue;
     }
 
-    if (arg === '--developer') {
+    if (arg === "--developer") {
       options.developer = readOptionValue(arg, rest, index);
       index += 1;
       continue;
     }
 
-    if (arg.startsWith('--developer=')) {
-      options.developer = arg.slice('--developer='.length);
+    if (arg.startsWith("--developer=")) {
+      options.developer = arg.slice("--developer=".length);
+      continue;
+    }
+
+    if (arg === "--skills") {
+      options.skillIds = readOptionValue(arg, rest, index)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      index += 1;
+      continue;
+    }
+
+    if (arg === "--mcps") {
+      options.mcpIds = readOptionValue(arg, rest, index)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      index += 1;
       continue;
     }
 
@@ -155,19 +251,21 @@ function parseArgs(argv) {
 
 function readOptionValue(arg, rest, index) {
   const value = rest[index + 1];
-  if (!value || value.startsWith('-')) {
+  if (!value || value.startsWith("-")) {
     throw new Error(`Missing value for ${arg}.`);
   }
   return value;
 }
 
 function formatInstallReport(rootDir, results) {
-  const lines = ['dream-wf install report:'];
+  const lines = ["dream-wf install report:"];
   for (const result of results.flat().filter(Boolean)) {
-    const suffix = result.reason ? ` (${result.reason})` : '';
-    lines.push(`- ${result.action}: ${formatRelative(rootDir, result.path)}${suffix}`);
+    const suffix = result.reason ? ` (${result.reason})` : "";
+    lines.push(
+      `- ${result.action}: ${formatRelative(rootDir, result.path)}${suffix}`,
+    );
   }
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 function writeOutput(message) {
@@ -176,15 +274,14 @@ function writeOutput(message) {
 
 function formatBanner() {
   const banner = [
-    '██████╗ ██████╗ ███████╗ █████╗ ███╗   ███╗',
-    '██╔══██╗██╔══██╗██╔════╝██╔══██╗████╗ ████║',
-    '██║  ██║██████╔╝█████╗  ███████║██╔████╔██║',
-    '██║  ██║██╔══██╗██╔══╝  ██╔══██║██║╚██╔╝██║',
-    '██████╔╝██║  ██║███████╗██║  ██║██║ ╚═╝ ██║',
-    '╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝╚═╝     ╚═╝',
-    '',
-    '  Dream WF · Trellis workflow profile installer'
-  ].join('\n');
+    "███████╗  ███████╗   ███████╗  ███████╗  ███╗   ███╗",
+    "██╔═══██╗ ██╔═══██╗ ██╔═════╝ ██╔═══██╗ ████╗ ████║",
+    "██║    ██║██████╔═╝ ███████╗  ███████╔╝ ██╔████╔██║",
+    "██║    ██║██╔═══██╗ ██╔════╝  ██╔═══██╗ ██║╚██╔╝██║",
+    "███████╔╝ ██║   ██║ ███████╗  ██║   ██║ ██║ ╚═╝ ██║",
+    "╚══════╝  ╚═╝   ╚═╝ ╚══════╝  ╚═╝   ╚═╝ ╚═╝     ╚═╝",
+    "  Dream WorkFlow v0.1.2",
+  ].join("\n");
 
   if (!process.stdout.isTTY || process.env.NO_COLOR) {
     return banner;
@@ -194,5 +291,35 @@ function formatBanner() {
 }
 
 function helpText() {
-  return `dream-wf\n\nUsage:\n  dream-wf init -p <cursor|claude|opencode> [--mode strict|advisory] [--install-deps --developer <name>]\n  dream-wf doctor -p <cursor|claude|opencode>\n  dream-wf update -p <cursor|claude|opencode>\n\nDefaults:\n  --mode strict\n  project-level install\n\nExamples:\n  npx dream-wf init -p cursor\n  npx dream-wf init -p claude --install-deps --developer ashe\n  npx dream-wf doctor -p opencode`;
+  return [
+    "dream-wf v0.1.2 · Trellis workflow 安装聚合器",
+    "",
+    "Usage:",
+    "  dream-wf                         # 交互式 TUI（推荐）",
+    "  dream-wf interactive             # 同上",
+    "  dream-wf init -p <cursor|claude|opencode|codex> [options]",
+    "  dream-wf doctor -p <cursor|claude|opencode|codex>",
+    "  dream-wf update -p <cursor|claude|opencode|codex>",
+    "",
+    "Options:",
+    "  -p <platform>                   cursor|claude|opencode|codex",
+    "  --mode strict|advisory          默认 strict",
+    "  --skills <id,id,...>            指定要安装的 skill id（默认全部）",
+    "  --mcps <id,id,...>              指定要配置的 mcp id（默认全部）",
+    "  --skip-skills                    不安装任何 skill",
+    "  --skip-mcps                     不配置任何 mcp",
+    "  --install-deps --developer <n>  自动初始化 Trellis",
+    "",
+    "Skill ids:",
+    "  trellis-dream-wf-patch, dream-wf-mcp-policy",
+    "",
+    "MCP ids:",
+    "  fast-context, grok-search",
+    "",
+    "Examples:",
+    "  npx dream-wf",
+    "  npx dream-wf init -p cursor",
+    "  npx dream-wf init -p claude --skills trellis-dream-wf-patch --mcps fast-context",
+    "  npx dream-wf doctor -p codex",
+  ].join("\n");
 }

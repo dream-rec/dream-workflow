@@ -13,6 +13,8 @@ For every software engineering request in this project, use the Dream WF profile
 
 During planning, do not start by drafting and writing a speculative PRD. Use `dream-wf-grill-prd` behavior first: inspect available context, ask exactly one high-value question at a time, provide 2-3 options and a recommended answer, then update `prd.md` after the user answers.
 
+Before requesting PRD confirmation, verify technical assumptions against latest knowledge using `grok-search-mcp` (`web_search`, `web_fetch`). Record results in the `## Knowledge Verification` section of `prd.md`. Correct any outdated assumptions. Add `knowledge verified` to the PRD after verification is complete.
+
 Do not start implementation until the active Trellis task has a confirmed PRD. Planning artifacts such as `prd.md`, `design.md`, `implement.md`, `implement.jsonl`, `check.jsonl`, and `research/**` are allowed during planning.
 
 ## MCP Policy

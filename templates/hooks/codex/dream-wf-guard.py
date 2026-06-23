@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+# Codex PreToolUse guard。
+# Codex CLI 支持 PreToolUse 阻塞式 hook，配置在 .codex/hooks.json。
+# stdin 收 JSON payload，stdout 返回 permissionDecision，或 exit code 2 表示 block。
 
 import json
 import os
@@ -6,7 +9,8 @@ import re
 import sys
 from pathlib import Path
 
-MUTATING_TOOLS = {"Write", "Edit", "MultiEdit", "Delete"}
+# Codex 的变更类 tool name：shell、apply_patch（文件编辑）。
+MUTATING_TOOLS = {"Write", "Edit", "MultiEdit", "Delete", "apply_patch", "shell", "Bash"}
 MUTATING_SHELL = re.compile(r"\b(rm|mv|cp|mkdir|touch|npm\s+install|pnpm\s+add|yarn\s+add|bun\s+add|git\s+commit|git\s+push)\b")
 
 
@@ -56,7 +60,6 @@ def is_planning_artifact(root, tool_input):
         file_path = Path(candidate)
         if not file_path.is_absolute():
             file_path = (root_resolved / file_path)
-        # 规范化符号链接，避免 /tmp vs /private/tmp 导致 relative_to 失败。
         relative = file_path.resolve().relative_to(root_resolved).as_posix()
     except Exception:
         return False
@@ -73,15 +76,22 @@ def is_planning_artifact(root, tool_input):
 
 def deny(message):
     print(json.dumps({
-        "permission": "deny",
-        "user_message": message,
-        "agent_message": message
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": message
+        }
     }))
     sys.exit(0)
 
 
 def allow():
-    print(json.dumps({"permission": "allow"}))
+    print(json.dumps({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "allow"
+        }
+    }))
     sys.exit(0)
 
 
@@ -97,12 +107,12 @@ def main():
 
     tool_name = payload.get("tool_name") or payload.get("tool", "")
     tool_input = payload.get("tool_input") or payload.get("input") or {}
-    cwd = payload.get("cwd") or os.getcwd()
+    cwd = payload.get("cwd") or os.environ.get("CODEX_PROJECT_DIR") or os.getcwd()
     root = find_root(cwd)
 
     is_mutating = tool_name in MUTATING_TOOLS
     command = tool_input.get("command", "") if isinstance(tool_input, dict) else ""
-    if tool_name in {"Shell", "Bash"} and MUTATING_SHELL.search(command):
+    if tool_name in {"Shell", "Bash", "shell"} and MUTATING_SHELL.search(command):
         is_mutating = True
 
     if not is_mutating:

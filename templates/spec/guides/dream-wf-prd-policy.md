@@ -12,10 +12,23 @@ This project uses `dream-wf` on top of Trellis.
 - Inspect code, docs, config, existing specs, and task history before asking the user.
 - Update `prd.md` only after each confirmed answer, confirmed existing fact, or explicit decision.
 - Treat task creation consent and implementation approval as separate gates.
+- **Before PRD confirmation, verify technical assumptions against latest knowledge using `grok-search-mcp` (`web_search`, `web_fetch`).** Record verification results in the `## Knowledge Verification` section of `prd.md`. If a search reveals an outdated assumption, correct it immediately. If a point cannot be verified, move it to `Open Questions`.
 - Do not start implementation until the PRD is confirmed.
 - Write README and project documentation in Chinese.
 - Write code comments in Chinese when comments are necessary, and avoid obvious comments.
 - Prefer concise file names: one word when clear, or lowercase snake_case for necessary multi-word names.
+
+## Knowledge Verification
+
+Before requesting PRD confirmation, identify technical risk points that could be outdated or wrong, and verify them with `grok-search-mcp`:
+
+- API names, signatures, behavior of external packages or services.
+- Framework or library version-specific behavior, deprecations, or breaking changes.
+- Tool configuration formats, hook event names, or feature flags.
+- Platform-specific conventions (e.g., Codex hook events, Cursor hooks.json format, Claude Code PreToolUse schema).
+- Release status or availability of packages, features, or APIs.
+
+Record each verification in `prd.md` under `## Knowledge Verification`. Add `knowledge verified` to the PRD after all risk points have been verified or moved to `Open Questions`.
 
 ## Initial Spec Candidates
 
@@ -25,6 +38,7 @@ During bootstrap or planning, spec candidates may come from:
 - PRD decisions.
 - Design decisions.
 - Verified codebase facts.
+- Knowledge verification results (confirmed or corrected).
 - Existing tests, configs, docs, and conventions.
 
 Initial spec candidates require user review before they become stable project conventions.

@@ -1,7 +1,7 @@
 ---
 name: dream-wf-grill-prd
 description: |
-  Use during Trellis planning when creating or refining a PRD. Applies grill-me style clarification: ask one question at a time, inspect code before asking, provide options and a recommended answer, update prd.md after each decision, and require PRD confirmation before implementation.
+  Use during Trellis planning when creating or refining a PRD. Applies grill-me style clarification: ask one question at a time, inspect code before asking, provide options and a recommended answer, update prd.md after each decision, verify technical facts against latest knowledge with grok-search-mcp before confirmation, and require PRD confirmation before implementation.
 ---
 
 # Dream WF Grill PRD
@@ -33,7 +33,52 @@ If the task is a small inline change and the user declined Trellis task creation
 8. Move confirmed answers into `Requirements`, `Acceptance Criteria`, `Decisions`, `Technical Notes`, or `Out of Scope`.
 9. Add spec candidates when a user answer or design decision should become a project convention.
 10. Continue until no blocking open questions remain.
-11. Show the complete PRD and ask for explicit confirmation before implementation starts.
+11. **Knowledge Verification** — before asking the user for PRD confirmation, perform a knowledge verification pass (see below).
+12. Show the complete PRD (including the Knowledge Verification section) and ask for explicit confirmation before implementation starts.
+
+## Knowledge Verification
+
+Before requesting PRD confirmation, verify that the technical assumptions in the PRD are aligned with the latest knowledge. This prevents executing on outdated or incorrect information.
+
+### When to Verify
+
+Identify technical points in the PRD that could be outdated or wrong:
+
+- API names, signatures, or behavior of external packages or services.
+- Framework or library version-specific behavior, deprecations, or breaking changes.
+- Tool configuration formats, hook event names, or feature flags.
+- Platform-specific conventions (e.g., Codex hook events, Cursor hooks.json format, Claude Code PreToolUse schema).
+- Release status or availability of packages, features, or APIs.
+- Any fact that the PRD relies on which, if wrong, would invalidate the plan.
+
+### How to Verify
+
+1. Prefer `grok-search-mcp` (`web_search`, `web_fetch`) for external docs, live technical information, and release notes.
+2. If `grok-search-mcp` is unavailable, state the fallback reason before using another web tool.
+3. For each verified point, record: what was searched, the source, and whether the PRD assumption was confirmed or corrected.
+4. If a search reveals that a PRD assumption is wrong or outdated, update the relevant PRD section immediately and note the correction.
+5. If a technical point cannot be verified (no reliable source found), flag it as an open question rather than assuming it is correct.
+
+### Recording Results
+
+Write results in the `## Knowledge Verification` section of `prd.md`:
+
+```markdown
+## Knowledge Verification
+
+- Verified: <what was checked>
+  Search: <query or topic searched>
+  Source: <URL or reference>
+  Result: confirmed | corrected | inconclusive
+  Correction: <if corrected, what changed>
+```
+
+### Stop Condition for Verification
+
+- All identified technical risk points have been searched and recorded, OR
+- Remaining unverified points have been moved to `Open Questions` with a clear note that they need verification before implementation.
+
+Only after this step is complete, add `knowledge verified` to the PRD and ask the user for final confirmation.
 
 ## PRD Structure
 
@@ -64,6 +109,13 @@ Use or preserve these sections:
 
 ## Technical Notes
 - ...
+
+## Knowledge Verification
+- Verified: ...
+  Search: ...
+  Source: ...
+  Result: confirmed | corrected | inconclusive
+  Correction: ...
 
 ## Spec Candidates
 - Candidate: ...

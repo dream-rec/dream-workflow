@@ -52,10 +52,12 @@ def is_planning_artifact(root, tool_input):
         return False
 
     try:
+        root_resolved = root.resolve()
         file_path = Path(candidate)
         if not file_path.is_absolute():
-            file_path = (root / file_path).resolve()
-        relative = file_path.relative_to(root).as_posix()
+            file_path = (root_resolved / file_path)
+        # 规范化符号链接，避免 /tmp vs /private/tmp 导致 relative_to 失败。
+        relative = file_path.resolve().relative_to(root_resolved).as_posix()
     except Exception:
         return False
 
@@ -91,6 +93,10 @@ def allow():
 
 
 def main():
+    # 逃生舱：DREAM_WF_MODE=advisory 时跳过 strict 检查。
+    if os.environ.get("DREAM_WF_MODE", "").lower() == "advisory":
+        allow()
+
     try:
         payload = json.load(sys.stdin)
     except Exception:
@@ -111,15 +117,31 @@ def main():
 
     tasks = active_tasks(root)
     if not tasks:
-        deny("dream-wf strict: mutating actions require an active Trellis task. Create or start a Trellis task first, or switch dream-wf to advisory mode.")
+        deny("dream-wf strict: mutating actions require an active Trellis task. Create or start a Trellis task first, or switch dream-wf to advisory mode (DREAM_WF_MODE=advisory).")
 
-    planning_tasks = [(task_dir, task) for task_dir, task in tasks if task.get("status") == "planning"]
-    if planning_tasks:
-        if is_planning_artifact(root, tool_input):
-            allow()
-        unconfirmed = [task for task_dir, task in planning_tasks if not is_prd_confirmed(task_dir)]
-        if unconfirmed:
-            deny("dream-wf strict: implementation is blocked while this task is in planning and its PRD is not confirmed. Continue grill-me PRD clarification first. Planning artifacts under .trellis/tasks/** are allowed.")
+    # 规划产物始终允许，便于在 planning 阶段编写 prd/design 等。
+    if is_planning_artifact(root, tool_input):
+        allow()
+
+    # 若存在已确认的 in_progress 任务，允许实现操作，不被其它 stale planning 任务阻塞。
+    in_progress_confirmed = any(
+        task.get("status") == "in_progress" and is_prd_confirmed(task_dir)
+        for task_dir, task in tasks
+    )
+    if in_progress_confirmed:
+        allow()
+
+    in_progress_any = any(task.get("status") == "in_progress" for _, task in tasks)
+    if in_progress_any:
+        allow()
+
+    # 剩余情况：所有活跃任务都是 planning。若任一未确认 PRD，则阻塞实现。
+    planning_unconfirmed = [
+        task_dir for task_dir, task in tasks
+        if task.get("status") == "planning" and not is_prd_confirmed(task_dir)
+    ]
+    if planning_unconfirmed:
+        deny("dream-wf strict: implementation is blocked while all active tasks are in planning and at least one PRD is not confirmed. Continue grill-me PRD clarification first. Planning artifacts under .trellis/tasks/** are allowed.")
 
     allow()
 

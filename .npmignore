@@ -4,8 +4,14 @@ node_modules/
 .DS_Store
 .cursor/
 .trellis/
+.claude/
+.opencode/
+.codex/
+.mcp.json
+opencode.json
 .git/
 .github/
 npm-debug.log*
 *.tgz
 verify-fixture/
+/tmp/

@@ -2,15 +2,19 @@ import path from 'node:path';
 import { readFile, chmod } from 'node:fs/promises';
 import { readJsonObject, writeJsonObject, pushUniqueByCommand } from '../../lib/json.js';
 import { writeIfChanged } from '../../lib/files.js';
-import { installCommonDreamWfFiles, installRuleFile, installSkill } from '../shared.js';
+import { installCommonDreamWfFiles, installRuleFile, installSelectedSkills } from '../shared.js';
+import { installMcpServers } from '../../lib/mcp.js';
 
 export async function installCursor(packageRoot, targetRoot, options) {
   const results = [];
 
   results.push(await installRuleFile(packageRoot, targetRoot, 'templates/rules/cursor/dream-wf.mdc', '.cursor/rules/dream-wf.mdc'));
-  results.push(await installSkill(packageRoot, targetRoot, '.cursor', 'dream-wf-grill-prd'));
-  results.push(await installSkill(packageRoot, targetRoot, '.cursor', 'dream-wf-mcp-policy'));
+  results.push(...await installSelectedSkills(packageRoot, targetRoot, '.cursor', options.skills));
   results.push(...await installCommonDreamWfFiles(packageRoot, targetRoot));
+
+  if (options.mcps && options.mcps.length > 0) {
+    results.push(await installMcpServers(targetRoot, 'cursor', options.mcps));
+  }
 
   if (options.mode === 'strict') {
     results.push(await installCursorHook(packageRoot, targetRoot));

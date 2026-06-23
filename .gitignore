@@ -6,3 +6,8 @@ node_modules/
 .trellis/
 .claude/
 .opencode/
+.codex/
+.mcp.json
+opencode.json
+__pycache__/
+*.pyc

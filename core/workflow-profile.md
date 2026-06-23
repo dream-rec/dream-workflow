@@ -24,6 +24,7 @@ Keep the native Trellis flow:
 ## Dream WF Patch Points
 
 - Use `dream-wf-grill-prd` for PRD clarification instead of open-ended brainstorm interviewing.
+- **Before PRD confirmation, perform a Knowledge Verification pass**: use `grok-search-mcp` (`web_search`, `web_fetch`) to verify technical assumptions that could be outdated or wrong. Record results in the `## Knowledge Verification` section of `prd.md`. Correct outdated assumptions. Add `knowledge verified` to the PRD after verification is complete.
 - Generate initial spec candidates from user answers, PRD decisions, and verified project facts.
 - Prefer `fast-context-mcp` for codebase semantic search.
 - Prefer `grok-search-mcp` for external docs, live technical information, and webpage fetching.

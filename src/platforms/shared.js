@@ -9,6 +9,17 @@ export async function installSkill(packageRoot, targetRoot, platformDir, skillNa
   return writeIfChanged(targetPath, contents);
 }
 
+// 按 catalog 选中的 skill 条目安装。skills 为 resolveSkills 返回的数组。
+// 若 skills 为 undefined，则安装全部（向后兼容旧 CLI 行为）。
+export async function installSelectedSkills(packageRoot, targetRoot, platformDir, skills) {
+  const list = skills ?? [];
+  const results = [];
+  for (const skill of list) {
+    results.push(await installSkill(packageRoot, targetRoot, platformDir, skill.name));
+  }
+  return results;
+}
+
 export async function installSpecGuide(packageRoot, targetRoot, fileName) {
   const sourcePath = path.join(packageRoot, 'templates', 'spec', 'guides', fileName);
   const targetPath = path.join(targetRoot, '.trellis', 'spec', 'guides', fileName);

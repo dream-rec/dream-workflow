@@ -1,42 +1,91 @@
 # DREAM-WORKFLOW
 
-面向 Cursor、Claude Code 和 OpenCode 的个人 Trellis workflow patch 安装器。
+面向 Codex、Claude Code、OpenCode 和 Cursor 的 Workflow patch 安装聚合器。
 
-`dream-wf` 不替代 Trellis。它是在 Trellis 之上安装一组项目级个人 workflow 约束：
+`dream-wf` 不替代 Trellis。它是在 Trellis 之上安装一组项目级个人 workflow 约束，同时聚合配置 MCP servers 和 skills：
 
-- PRD 澄清自动采用 grill-me 风格，用户不需要显式提到 `dream-wf`。
-- Trellis 原生的任务生命周期、spec、hooks、skills、sub-agents、checks 和 finish-work 保持不变。
-- 初始 spec 候选内容来自用户回答、PRD 决策和已验证的项目事实。
-- 代码语义检索优先使用 `fast-context-mcp`。
-- 外部文档和实时网络检索优先使用 `grok-search-mcp`。
-- strict 模式会阻止无活跃任务或 PRD 未确认时的实现类操作。
+- 平台选择：Cursor / Claude Code / OpenCode / Codex
+- Skill 安装：`dream-wf-grill-prd`（Trellis patch · grill-me 风格 PRD）、`dream-wf-mcp-policy`（MCP 优先级策略）
+- MCP 配置：`fast-context-mcp`（代码语义检索）、`grok-search-mcp`（外部文档/实时网络检索）
+- 交互式 TUI：上下选择、space 选中、enter 下一步/安装
+- PRD 澄清自动采用 grill-me 风格，用户不需要显式提到 `dream-wf`
+- Trellis 原生的任务生命周期、spec、hooks、skills、sub-agents、checks 和 finish-work 保持不变
+- strict 模式会阻止无活跃任务或 PRD 未确认时的实现类操作
 
 ## 安装
+
+### 交互式 TUI（推荐）
+
+```bash
+npx dream-wf
+```
+
+无参数时自动进入 TUI：
+
+1. 第一步选择平台（claude code / codex / opencode / cursor）
+2. 第二步选择要安装的 skills（默认全选）
+3. 第三步选择要配置的 MCP servers（默认全选）
+4. enter 确认安装
+
+操作键：
+
+- `↑/↓` 移动光标
+- `space` 切换选中
+- `a` 全选/全不选
+- `enter` 下一步/确认
+- `ctrl+c` 退出
+
+### 命令行模式
 
 ```bash
 npx dream-wf init -p cursor
 npx dream-wf init -p claude
 npx dream-wf init -p opencode
+npx dream-wf init -p codex
 ```
 
-`-p` 是必填参数。默认安装范围是项目级，默认模式是 `strict`。
+`-p` 是必填参数。默认安装范围是项目级，默认模式是 `strict`，默认安装全部 skills 和 MCPs。
 
 ## 命令
 
 ```bash
-npx dream-wf init -p cursor
-npx dream-wf doctor -p cursor
-npx dream-wf update -p cursor
+npx dream-wf                                  # 交互式 TUI
+npx dream-wf interactive                      # 同上
+npx dream-wf init -p <platform> [options]
+npx dream-wf doctor -p <platform>
+npx dream-wf update -p <platform>
 ```
 
 参数：
 
 ```bash
--p cursor|claude|opencode
---mode strict|advisory
---install-deps
---developer <name>
+-p cursor|claude|opencode|codex              # 必填
+--mode strict|advisory                        # 默认 strict
+--skills <id,id,...>                          # 指定 skill id，默认全部
+--mcps <id,id,...>                            # 指定 mcp id，默认全部
+--skip-skills                                 # 不安装任何 skill
+--skip-mcps                                   # 不配置任何 mcp
+--install-deps --developer <name>            # 自动初始化 Trellis
 ```
+
+Skill ids：
+
+- `trellis-dream-wf-patch`（dream-wf-grill-prd）
+- `dream-wf-mcp-policy`
+
+MCP ids：
+
+- `fast-context`（fast-context-mcp）
+- `grok-search`（grok-search-mcp）
+
+## 平台支持
+
+| 平台 | 入口规则 | Skills 目录 | Hook 类型 | MCP 配置文件 |
+|------|---------|------------|----------|-------------|
+| Cursor | `.cursor/rules/dream-wf.mdc` | `.cursor/skills/` | `preToolUse` (python) | `.cursor/mcp.json` |
+| Claude Code | `CLAUDE.md` | `.claude/skills/` | `PreToolUse` (python) | `.mcp.json` |
+| OpenCode | `AGENTS.md` | `.opencode/skills/` | `tool.execute.before` plugin (js) | `opencode.json` |
+| Codex | `AGENTS.md` | `.codex/skills/` | `PreToolUse` (python, hooks.json) | `.codex/config.toml` |
 
 ## Trellis 
 
@@ -49,9 +98,10 @@ npm install -g @mindfoldhq/trellis@latest
 先初始化 Trellis，或者让 `dream-wf` 输出对应的初始化命令：
 
 ```bash
-trellis init -u your-name --cursor
-trellis init -u your-name --claude
-trellis init -u your-name --opencode
+trellis init -u your-name --cursor --yes
+trellis init -u your-name --claude --yes
+trellis init -u your-name --opencode --yes
+trellis init -u your-name --codex --yes
 ```
 
 ## Grill Me 
@@ -119,7 +169,6 @@ MCP server 配置示例：
 }
 ```
 
-
 ## 生成文件
 
 Cursor：
@@ -129,6 +178,7 @@ Cursor：
 - `.cursor/skills/dream-wf-mcp-policy/SKILL.md`
 - `.cursor/hooks/dream-wf-guard.py`
 - `.cursor/hooks.json`
+- `.cursor/mcp.json`
 
 Claude Code：
 
@@ -137,6 +187,7 @@ Claude Code：
 - `.claude/skills/dream-wf-mcp-policy/SKILL.md`
 - `.claude/hooks/dream-wf-guard.py`
 - `.claude/settings.json`
+- `.mcp.json`
 
 OpenCode：
 
@@ -144,6 +195,16 @@ OpenCode：
 - `.opencode/skills/dream-wf-grill-prd/SKILL.md`
 - `.opencode/skills/dream-wf-mcp-policy/SKILL.md`
 - `.opencode/plugins/dream-wf-guard.js`
+- `opencode.json`
+
+Codex：
+
+- `AGENTS.md` dream-wf entry block
+- `.codex/skills/dream-wf-grill-prd/SKILL.md`
+- `.codex/skills/dream-wf-mcp-policy/SKILL.md`
+- `.codex/hooks/dream-wf-guard.py`
+- `.codex/hooks.json`
+- `.codex/config.toml`（含 `[features] hooks = true` 和 `[mcp_servers.*]`）
 
 Trellis：
 
@@ -172,4 +233,13 @@ status: confirmed
 
 ```bash
 npx dream-wf doctor -p cursor
+npx dream-wf doctor -p codex
 ```
+
+doctor 会检查：
+
+- 必需二进制（node、python3、trellis、uvx）
+- Trellis 项目目录和 workflow.md
+- 平台对应的规则、skills、hook 文件
+- MCP 配置文件存在性和默认 MCP 条目完整性
+- 项目文件中的密钥泄露扫描

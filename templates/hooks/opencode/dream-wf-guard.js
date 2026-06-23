@@ -1,13 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const mutatingTools = new Set(['Write', 'Edit', 'MultiEdit', 'Delete']);
+const mutatingTools = new Set(['Write', 'Edit', 'MultiEdit', 'Delete', 'apply_patch', 'shell']);
 const mutatingShell = /\b(rm|mv|cp|mkdir|touch|npm\s+install|pnpm\s+add|yarn\s+add|bun\s+add|git\s+commit|git\s+push)\b/;
 
 export default function dreamWfGuard() {
   return {
     name: 'dream-wf-guard',
-    async 'tool.before'(input) {
+    async 'tool.execute.before'(input) {
+      // 逃生舱：DREAM_WF_MODE=advisory 时跳过 strict 检查。
+      if (process.env.DREAM_WF_MODE?.toLowerCase() === 'advisory') {
+        return;
+      }
+
       const toolName = input?.tool || input?.tool_name || '';
       const toolInput = input?.input || input?.tool_input || {};
       const cwd = input?.cwd || process.cwd();
@@ -21,17 +26,29 @@ export default function dreamWfGuard() {
 
       const tasks = activeTasks(root);
       if (tasks.length === 0) {
-        throw new Error('dream-wf strict: mutating actions require an active Trellis task. Create or start a Trellis task first, or switch dream-wf to advisory mode.');
+        throw new Error('dream-wf strict: mutating actions require an active Trellis task. Create or start a Trellis task first, or switch dream-wf to advisory mode (DREAM_WF_MODE=advisory).');
       }
 
-      const hasPlanningTask = tasks.some(({ task }) => task.status === 'planning');
-      if (hasPlanningTask && isPlanningArtifact(root, toolInput)) {
+      // 规划产物始终允许，便于在 planning 阶段编写 prd/design 等。
+      if (isPlanningArtifact(root, toolInput)) {
         return;
       }
 
-      const hasUnconfirmedPlanningTask = tasks.some(({ taskDir, task }) => task.status === 'planning' && !isPrdConfirmed(taskDir));
-      if (hasUnconfirmedPlanningTask) {
-        throw new Error('dream-wf strict: implementation is blocked while this task is in planning and its PRD is not confirmed. Continue grill-me PRD clarification first. Planning artifacts under .trellis/tasks/** are allowed.');
+      // 若存在已确认的 in_progress 任务，允许实现操作，不被其它 stale planning 任务阻塞。
+      const hasConfirmedInProgress = tasks.some(({ taskDir, task }) => task.status === 'in_progress' && isPrdConfirmed(taskDir));
+      if (hasConfirmedInProgress) {
+        return;
+      }
+
+      const hasAnyInProgress = tasks.some(({ task }) => task.status === 'in_progress');
+      if (hasAnyInProgress) {
+        return;
+      }
+
+      // 剩余情况：所有活跃任务都是 planning。若任一未确认 PRD，则阻塞实现。
+      const hasUnconfirmedPlanning = tasks.some(({ taskDir, task }) => task.status === 'planning' && !isPrdConfirmed(taskDir));
+      if (hasUnconfirmedPlanning) {
+        throw new Error('dream-wf strict: implementation is blocked while all active tasks are in planning and at least one PRD is not confirmed. Continue grill-me PRD clarification first. Planning artifacts under .trellis/tasks/** are allowed.');
       }
     }
   };
@@ -93,8 +110,9 @@ function isPlanningArtifact(root, toolInput) {
 
   let relative;
   try {
-    const filePath = path.isAbsolute(candidate) ? candidate : path.resolve(root, candidate);
-    relative = path.relative(root, filePath).split(path.sep).join('/');
+    const rootResolved = fs.realpathSync(root);
+    const filePath = path.isAbsolute(candidate) ? candidate : path.resolve(rootResolved, candidate);
+    relative = path.relative(rootResolved, fs.realpathSync(filePath)).split(path.sep).join('/');
   } catch {
     return false;
   }

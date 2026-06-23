@@ -1,13 +1,13 @@
 {
   "name": "dream-wf",
-  "version": "0.1.1",
-  "description": "Personal Trellis workflow patch installer for Cursor, Claude Code, and OpenCode.",
+  "version": "0.1.2",
+  "description": "Trellis workflow patch installer and MCP/skill aggregator for Cursor, Claude Code, OpenCode and Codex.",
   "type": "module",
   "bin": {
     "dream-wf": "bin/dream-wf.js"
   },
   "scripts": {
-    "check": "node --check bin/dream-wf.js && node --check src/cli/index.js && node --check src/lib/files.js && node --check src/lib/platforms.js && node --check src/lib/trellis.js && node --check src/lib/json.js && node --check src/doctor/index.js && node --check src/deps/index.js && node --check src/platforms/shared.js && node --check src/platforms/cursor/index.js && node --check src/platforms/claude-code/index.js && node --check src/platforms/opencode/index.js && node --check templates/hooks/opencode/dream-wf-guard.js"
+    "check": "node --check bin/dream-wf.js && node --check src/cli/index.js && node --check src/lib/files.js && node --check src/lib/platforms.js && node --check src/lib/trellis.js && node --check src/lib/json.js && node --check src/lib/catalog.js && node --check src/lib/mcp.js && node --check src/doctor/index.js && node --check src/deps/index.js && node --check src/platforms/shared.js && node --check src/platforms/cursor/index.js && node --check src/platforms/claude-code/index.js && node --check src/platforms/opencode/index.js && node --check src/platforms/codex/index.js && node --check src/tui/index.js && node --check templates/hooks/opencode/dream-wf-guard.js"
   },
   "keywords": [
     "trellis",
@@ -15,6 +15,7 @@
     "cursor",
     "claude",
     "opencode",
+    "codex",
     "mcp"
   ],
   "license": "MIT",
