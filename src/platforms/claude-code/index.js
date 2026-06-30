@@ -5,6 +5,9 @@ import { writeIfChanged } from '../../lib/files.js';
 import { installCommonDreamWfFiles, installManagedBlock, installSelectedSkills } from '../shared.js';
 import { installMcpServers } from '../../lib/mcp.js';
 
+const CLAUDE_GUARD_COMMAND = 'python3 -X utf8 .claude/hooks/dream-wf-guard.py';
+const LEGACY_CLAUDE_GUARD_COMMAND = 'python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/dream-wf-guard.py"';
+
 export async function installClaudeCode(packageRoot, targetRoot, options) {
   const results = [];
 
@@ -39,20 +42,39 @@ async function mergeClaudeSettings(rootDir) {
   settings.hooks = settings.hooks ?? {};
   settings.hooks.PreToolUse = settings.hooks.PreToolUse ?? [];
 
-  const changed = pushUniqueByCommand(settings.hooks.PreToolUse, {
+  const migrated = replaceHookCommand(settings.hooks.PreToolUse, LEGACY_CLAUDE_GUARD_COMMAND, CLAUDE_GUARD_COMMAND);
+  const added = pushUniqueByCommand(settings.hooks.PreToolUse, {
     matcher: '*',
     hooks: [
       {
         type: 'command',
-        command: 'python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/dream-wf-guard.py"',
+        command: CLAUDE_GUARD_COMMAND,
         timeout: 10
       }
     ]
   });
+  const changed = migrated || added;
 
   if (changed) {
     await writeJsonObject(settingsPath, settings);
   }
 
   return { changed, action: changed ? 'updated' : 'unchanged', path: settingsPath };
+}
+
+function replaceHookCommand(items, oldCommand, newCommand) {
+  let changed = false;
+  for (const item of items) {
+    if (!item || typeof item !== 'object' || !Array.isArray(item.hooks)) {
+      continue;
+    }
+
+    for (const hook of item.hooks) {
+      if (hook?.command === oldCommand) {
+        hook.command = newCommand;
+        changed = true;
+      }
+    }
+  }
+  return changed;
 }
