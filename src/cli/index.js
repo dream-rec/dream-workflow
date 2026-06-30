@@ -280,7 +280,7 @@ function formatBanner() {
     "██║    ██║██╔═══██╗ ██╔════╝  ██╔═══██╗ ██║╚██╔╝██║",
     "███████╔╝ ██║   ██║ ███████╗  ██║   ██║ ██║ ╚═╝ ██║",
     "╚══════╝  ╚═╝   ╚═╝ ╚══════╝  ╚═╝   ╚═╝ ╚═╝     ╚═╝",
-    "  Dream WorkFlow v0.1.2",
+    "  Dream WorkFlow v0.1.3",
   ].join("\n");
 
   if (!process.stdout.isTTY || process.env.NO_COLOR) {
@@ -292,7 +292,7 @@ function formatBanner() {
 
 function helpText() {
   return [
-    "dream-wf v0.1.2 · Trellis workflow 安装聚合器",
+    "dream-wf v0.1.3 · Trellis workflow 安装聚合器",
     "",
     "Usage:",
     "  dream-wf                         # 交互式 TUI（推荐）",

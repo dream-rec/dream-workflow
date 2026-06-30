@@ -1,6 +1,6 @@
 {
   "name": "dream-wf",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Trellis workflow patch installer and MCP/skill aggregator for Cursor, Claude Code, OpenCode and Codex.",
   "type": "module",
   "bin": {
