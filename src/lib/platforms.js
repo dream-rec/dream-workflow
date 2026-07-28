@@ -1,10 +1,11 @@
-export const SUPPORTED_PLATFORMS = new Set(['cursor', 'claude', 'opencode', 'codex']);
+export const SUPPORTED_PLATFORMS = new Set(['cursor', 'claude', 'opencode', 'codex', 'pi']);
 
 export const PLATFORM_LABELS = {
   cursor: 'Cursor',
   claude: 'Claude Code',
   opencode: 'OpenCode',
-  codex: 'Codex'
+  codex: 'Codex',
+  pi: 'Pi'
 };
 
 export function normalizePlatform(value) {
@@ -17,11 +18,11 @@ export function normalizePlatform(value) {
 
 export function assertSupportedPlatform(platform) {
   if (!platform) {
-    throw new Error('Missing required -p <cursor|claude|opencode|codex>.');
+    throw new Error('Missing required -p <cursor|claude|opencode|codex|pi>.');
   }
 
   if (!SUPPORTED_PLATFORMS.has(platform)) {
-    throw new Error(`Unsupported platform "${platform}". Use one of: cursor, claude, opencode, codex.`);
+    throw new Error(`Unsupported platform "${platform}". Use one of: cursor, claude, opencode, codex, pi.`);
   }
 }
 
@@ -37,6 +38,9 @@ export function trellisPlatformFlag(platform) {
   }
   if (platform === 'codex') {
     return '--codex';
+  }
+  if (platform === 'pi') {
+    return '--pi';
   }
   assertSupportedPlatform(platform);
 }

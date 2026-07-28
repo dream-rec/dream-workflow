@@ -1,10 +1,10 @@
 # DREAM-WORKFLOW
 
-面向 Codex、Claude Code、OpenCode 和 Cursor 的 Workflow patch 安装聚合器。
+面向 Pi、Codex、Claude Code、OpenCode 和 Cursor 的 Workflow patch 安装聚合器。
 
-`dream-wf` 不替代 Trellis。它是在 Trellis 之上安装一组项目级个人 workflow 约束，同时聚合配置 MCP servers 和 skills：
+`dream-wf` 不替代 Trellis。它是在 Trellis 之上安装一组项目级个人 workflow 约束，同时聚合配置 MCP servers 和 skills；也可以安装 Pi 及配套扩展：
 
-- 平台选择：Cursor / Claude Code / OpenCode / Codex
+- 平台选择：Pi / Cursor / Claude Code / OpenCode / Codex
 - Skill 安装：`dream-wf-grill-prd`（Trellis patch · grill-me 风格 PRD）、`dream-wf-mcp-policy`（MCP 优先级策略）
 - MCP 配置：`fast-context-mcp`（代码语义检索）、`grok-search-mcp`（外部文档/实时网络检索）
 - 交互式 TUI：上下选择、space 选中、enter 下一步/安装
@@ -22,7 +22,7 @@ npx dream-wf
 
 无参数时自动进入 TUI：
 
-1. 第一步选择平台（claude code / codex / opencode / cursor）
+1. 第一步选择平台（claude code / codex / opencode / cursor / pi）
 2. 第二步选择要安装的 skills（默认全选）
 3. 第三步选择要配置的 MCP servers（默认全选）
 4. enter 确认安装
@@ -42,6 +42,7 @@ npx dream-wf init -p cursor
 npx dream-wf init -p claude
 npx dream-wf init -p opencode
 npx dream-wf init -p codex
+npx dream-wf init -p pi
 ```
 
 `-p` 是必填参数。默认安装范围是项目级，默认模式是 `strict`，默认安装全部 skills 和 MCPs。
@@ -59,7 +60,7 @@ npx dream-wf update -p <platform>
 参数：
 
 ```bash
--p cursor|claude|opencode|codex              # 必填
+-p cursor|claude|opencode|codex|pi           # 必填
 --mode strict|advisory                        # 默认 strict
 --skills <id,id,...>                          # 指定 skill id，默认全部
 --mcps <id,id,...>                            # 指定 mcp id，默认全部
@@ -86,8 +87,49 @@ MCP ids：
 | Claude Code | `CLAUDE.md` | `.claude/skills/` | `PreToolUse` (python) | `.mcp.json` |
 | OpenCode | `AGENTS.md` | `.opencode/skills/` | `tool.execute.before` plugin (js) | `opencode.json` |
 | Codex | `AGENTS.md` | `.codex/skills/` | `PreToolUse` (python, hooks.json) | `.codex/config.toml` |
+| Pi | `AGENTS.md` + Trellis 原生 `.pi/extensions/trellis/` | `.agents/skills/` | Pi extension events | `.mcp.json`（`pi-mcp-adapter`） |
 
-## Trellis 
+- Pi：可选的终端编码代理安装，以及当前验证过的扩展组合：
+  - `pi-tool-display@0.5.0`
+  - `pi-nano-context@0.1.1`
+  - `pi-cometix-footer@1.1.1`
+  - `pi-mcp-adapter@2.15.0`（Pi 专用 MCP 适配器，按需发现工具，原生读取 `.mcp.json`）
+  - `@arcaneorion/pi-provider-manager@0.3.9`
+
+## Pi 安装
+
+```bash
+npx dream-wf init -p pi
+```
+
+该命令会：
+
+1. 使用 npm 全局安装固定版本的 `@earendil-works/pi-coding-agent`（产品名称统一简称 **Pi**）；
+2. 通过 `pi install` 安装上述 Pi 扩展，其中 `pi-mcp-adapter` 负责 MCP；
+3. 使用 Trellis 最新版原生支持的 `trellis init ... --pi --yes` 初始化项目级 Pi extension、prompts、agents 和共享 skills；
+4. 将选中的 MCP servers 写入项目根 `.mcp.json`，由 `pi-mcp-adapter` 自动读取；
+5. 安装完成后自动修复 `pi-nano-context` 与 `pi-cometix-footer` 的 footer 冲突；
+6. 修复 `@arcaneorion/pi-provider-manager@0.3.9` 发布包遗漏的 `pi.extensions`（上游“+”补丁行发布错误会导致 Pi 启动失败）；
+7. 保留现有 `~/.pi/agent/models.json`，没有配置时写入使用环境变量的 AgentRouter 示例；
+8. 执行检查：
+
+```bash
+npx dream-wf doctor -p pi
+```
+
+API key 不写入安装器或 Git，使用环境变量：
+
+```bash
+export AGENTROUTER_API_KEY=your-key
+```
+
+升级 Pi 及扩展时执行：
+
+```bash
+npx dream-wf update -p pi
+```
+
+## Trellis
 
 来源：https://github.com/mindfold-ai/trellis
 
@@ -102,6 +144,7 @@ trellis init -u your-name --cursor --yes
 trellis init -u your-name --claude --yes
 trellis init -u your-name --opencode --yes
 trellis init -u your-name --codex --yes
+trellis init -u your-name --pi --yes
 ```
 
 ## Grill Me 

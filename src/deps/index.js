@@ -9,6 +9,43 @@ export async function checkDependencies(rootDir, platform) {
   const checks = [];
 
   checks.push(binaryCheck('node', 'Node.js >= 18 is required.'));
+  if (platform === 'pi') {
+    checks.push(binaryCheck('pi', 'Install with: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.82.1'));
+    checks.push(binaryCheck('trellis', 'Install with: npm install -g @mindfoldhq/trellis@latest'));
+    const agentDir = process.env.PI_CODING_AGENT_DIR || path.join(process.env.HOME || '', '.pi', 'agent');
+    for (const packageName of ['pi-tool-display', 'pi-nano-context', 'pi-cometix-footer', 'pi-mcp-adapter', '@arcaneorion/pi-provider-manager']) {
+      checks.push(await fileCheck(path.join(agentDir, 'npm', 'node_modules', packageName, 'package.json'), `Pi package ${packageName}`));
+    }
+    checks.push(await fileCheck(path.join(agentDir, 'models.json'), 'Pi models.json'));
+    const nanoPath = path.join(agentDir, 'npm', 'node_modules', 'pi-nano-context', 'index.ts');
+    const nanoSource = await readTextIfExists(nanoPath);
+    checks.push({
+      name: 'Pi footer conflict repair',
+      ok: Boolean(nanoSource) && !nanoSource.includes('ctx.ui.setFooter('),
+      hint: `pi-nano-context still registers a competing footer. Run dream-wf update -p pi to repair ${nanoPath}`
+    });
+    const providerManagerPath = path.join(agentDir, 'npm', 'node_modules', '@arcaneorion', 'pi-provider-manager', 'package.json');
+    let providerManagerManifest;
+    try {
+      providerManagerManifest = JSON.parse((await readTextIfExists(providerManagerPath)) ?? 'null');
+    } catch {
+      providerManagerManifest = null;
+    }
+    checks.push({
+      name: 'Pi provider-manager package repair',
+      ok: providerManagerManifest?.pi?.extensions?.length === 1 && providerManagerManifest.pi.extensions[0] === './index.ts',
+      hint: `pi-provider-manager has the known broken npm manifest. Run dream-wf update -p pi to repair ${providerManagerPath}`
+    });
+    checks.push(await fileCheck(path.join(rootDir, '.trellis'), 'Trellis project directory'));
+    checks.push(await fileCheck(path.join(rootDir, '.pi', 'extensions', 'trellis', 'index.ts'), 'Trellis Pi extension'));
+    checks.push(await contentCheck(path.join(rootDir, 'AGENTS.md'), '<!-- DREAM-WF:START -->', 'Pi dream-wf entry block'));
+    checks.push(await fileCheck(path.join(rootDir, '.agents', 'skills', 'dream-wf-grill-prd', 'SKILL.md'), 'Pi dream-wf grill PRD skill'));
+    checks.push(await fileCheck(path.join(rootDir, '.agents', 'skills', 'dream-wf-mcp-policy', 'SKILL.md'), 'Pi dream-wf MCP policy skill'));
+    checks.push(await mcpConfigCheck(rootDir, 'pi'));
+    checks.push(await secretScan(rootDir));
+    return checks;
+  }
+
   checks.push(binaryCheck('python3', 'Python >= 3.9 is required by Trellis.'));
   checks.push(binaryCheck('trellis', 'Install with: npm install -g @mindfoldhq/trellis@latest'));
   checks.push(binaryCheck('uvx', 'Required for grok-search-mcp. Install uv: https://docs.astral.sh/uv/'));
@@ -58,7 +95,8 @@ async function mcpConfigCheck(rootDir, platform) {
     cursor: '.cursor/mcp.json',
     claude: '.mcp.json',
     opencode: 'opencode.json',
-    codex: '.codex/config.toml'
+    codex: '.codex/config.toml',
+    pi: '.mcp.json'
   };
 
   const exists = await mcpConfigExists(rootDir, platform);

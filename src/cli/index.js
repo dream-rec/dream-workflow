@@ -22,6 +22,7 @@ import { installOpenCode } from "../platforms/opencode/index.js";
 import { installCodex } from "../platforms/codex/index.js";
 import { runDoctor, formatDoctorReport } from "../doctor/index.js";
 import { runInteractive } from "../tui/index.js";
+import { installPi, ensurePiConfig, installPiProject } from "../platforms/pi/index.js";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -65,6 +66,10 @@ export async function run(argv) {
   const platform = normalizePlatform(options.platform);
   assertSupportedPlatform(platform);
 
+  if (platform === "pi" && command !== "init" && command !== "update" && command !== "doctor") {
+    throw new Error("Pi supports: dream-wf init|update|doctor -p pi.");
+  }
+
   const rootDir = process.cwd();
   const mode = options.mode ?? "strict";
   if (!["strict", "advisory"].includes(mode)) {
@@ -97,6 +102,33 @@ export async function run(argv) {
 }
 
 async function init(rootDir, options) {
+  // Pi 同时安装全局 CLI/扩展，并用 Trellis 原生 --pi 生成项目资产。
+  if (options.platform === "pi") {
+    writeOutput(formatBanner());
+    const skillIds = options.skillIds ?? defaultSkillIds();
+    const mcpIds = options.mcpIds ?? defaultMcpIds();
+    const skills = resolveSkills(options.skills ? options.skills.map((s) => s.id) : skillIds);
+    const mcps = resolveMcps(options.mcps ? options.mcps.map((m) => m.id) : mcpIds);
+    const initOptions = { ...options, mode: options.mode ?? "strict", skills, mcps };
+    const results = [...await installPi(), await ensurePiConfig()];
+    const trellis = await ensureTrellisInitialized(rootDir, initOptions);
+    if (!trellis.initialized) {
+      writeOutput([
+        formatInstallReport(rootDir, results),
+        "",
+        "Pi 已安装；当前项目尚未初始化 Trellis。",
+        `Run: ${trellis.initCommand}`,
+        "Then rerun dream-wf init -p pi.",
+      ].join("\n"));
+      return;
+    }
+    results.push(await installTrellisProfile(rootDir));
+    results.push(...await installPiProject(packageRoot, rootDir, initOptions));
+    const report = await runDoctor(rootDir, "pi");
+    writeOutput(`${formatInstallReport(rootDir, results)}\n\n${formatDoctorReport(report)}`);
+    return;
+  }
+
   // 来自 TUI 的 options 已带 skills/mcps；来自 CLI 的 options 需要解析。
   const platform = options.platform;
   const mode = options.mode ?? "strict";
@@ -191,11 +223,11 @@ function parseArgs(argv) {
       continue;
     }
 
-    if (arg === "-p") {
+    if (arg === "-p" || arg === "--platform") {
       const value = rest[index + 1];
       if (!value || value.startsWith("-")) {
         throw new Error(
-          "Missing value for -p. Use -p <cursor|claude|opencode|codex>.",
+          "Missing value for -p/--platform. Use -p <cursor|claude|opencode|codex|pi>.",
         );
       }
       options.platform = value;
@@ -297,12 +329,12 @@ function helpText() {
     "Usage:",
     "  dream-wf                         # 交互式 TUI（推荐）",
     "  dream-wf interactive             # 同上",
-    "  dream-wf init -p <cursor|claude|opencode|codex> [options]",
-    "  dream-wf doctor -p <cursor|claude|opencode|codex>",
-    "  dream-wf update -p <cursor|claude|opencode|codex>",
+    "  dream-wf init -p <cursor|claude|opencode|codex|pi> [options]",
+    "  dream-wf doctor -p <cursor|claude|opencode|codex|pi>",
+    "  dream-wf update -p <cursor|claude|opencode|codex|pi>",
     "",
     "Options:",
-    "  -p <platform>                   cursor|claude|opencode|codex",
+    "  -p, --platform <platform>       cursor|claude|opencode|codex|pi",
     "  --mode strict|advisory          默认 strict",
     "  --skills <id,id,...>            指定要安装的 skill id（默认全部）",
     "  --mcps <id,id,...>              指定要配置的 mcp id（默认全部）",
@@ -319,6 +351,7 @@ function helpText() {
     "Examples:",
     "  npx dream-wf",
     "  npx dream-wf init -p cursor",
+    "  npx dream-wf init -p pi",
     "  npx dream-wf init -p claude --skills trellis-dream-wf-patch --mcps fast-context",
     "  npx dream-wf doctor -p codex",
   ].join("\n");

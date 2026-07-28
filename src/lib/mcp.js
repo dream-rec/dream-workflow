@@ -62,6 +62,11 @@ async function installClaudeMcp(rootDir, mcpEntries) {
   return { changed, action: changed ? 'updated' : 'unchanged', path: configPath };
 }
 
+// Pi + pi-mcp-adapter: 项目根 .mcp.json，与 Claude/通用 MCP 客户端共享。
+async function installPiMcp(rootDir, mcpEntries) {
+  return installClaudeMcp(rootDir, mcpEntries);
+}
+
 // OpenCode: opencode.json -> { mcp: { servers: { name: {...} } } }
 async function installOpenCodeMcp(rootDir, mcpEntries) {
   const configPath = path.join(rootDir, 'opencode.json');
@@ -195,7 +200,8 @@ const INSTALLERS = {
   cursor: installCursorMcp,
   claude: installClaudeMcp,
   opencode: installOpenCodeMcp,
-  codex: installCodexMcp
+  codex: installCodexMcp,
+  pi: installPiMcp
 };
 
 export async function installMcpServers(rootDir, platform, mcpEntries) {
@@ -213,7 +219,8 @@ export async function readMcpServers(rootDir, platform) {
       const config = await readJsonObject(path.join(rootDir, '.cursor', 'mcp.json'), { mcpServers: {} });
       return config.mcpServers ?? {};
     }
-    case 'claude': {
+    case 'claude':
+    case 'pi': {
       const config = await readJsonObject(path.join(rootDir, '.mcp.json'), { mcpServers: {} });
       return config.mcpServers ?? {};
     }
@@ -294,6 +301,7 @@ export async function mcpConfigExists(rootDir, platform) {
     case 'cursor':
       return pathExists(path.join(rootDir, '.cursor', 'mcp.json'));
     case 'claude':
+    case 'pi':
       return pathExists(path.join(rootDir, '.mcp.json'));
     case 'opencode':
       return pathExists(path.join(rootDir, 'opencode.json'));

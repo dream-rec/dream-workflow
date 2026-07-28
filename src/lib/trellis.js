@@ -32,7 +32,7 @@ export async function ensureTrellisInitialized(rootDir, options) {
   }
 
   const platformFlag = trellisPlatformFlag(options.platform);
-  const initCommand = `trellis init -u ${options.developer ?? '<your-name>'} ${platformFlag}`;
+  const initCommand = `trellis init -u ${options.developer ?? '<your-name>'} ${platformFlag} --yes`;
 
   if (!options.installDeps) {
     return { ...state, initialized: false, initCommand };

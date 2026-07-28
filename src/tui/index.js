@@ -299,7 +299,7 @@ function renderSummary(platform, skills, mcps, mode, trellisAction) {
   const lines = [];
   lines.push(colorize("即将安装:", COLORS.magenta));
   lines.push(`  平台: ${colorize(PLATFORM_LABELS[platform], COLORS.bold)}`);
-  lines.push(`  模式: ${mode === "strict" ? colorize("strict", COLORS.yellow) : colorize("advisory", COLORS.green)}`);
+  lines.push(`  模式: ${mode === "strict" ? colorize("strict", COLORS.yellow) : mode === "global" ? colorize("global", COLORS.cyan) : colorize("advisory", COLORS.green)}`);
 
   if (trellisAction) {
     lines.push(`  Trellis: ${colorize(trellisAction, COLORS.cyan)}`);
@@ -337,7 +337,7 @@ export async function runInteractive() {
     items: platformItems,
   });
 
-  // 第二步：Trellis 基础依赖。
+  // 第二步：Trellis 基础依赖。Pi 也使用 Trellis 原生 --pi 项目资产。
   const trellisState = await detectTrellis(process.cwd());
   let trellisAction = null;
   let installDeps = false;
