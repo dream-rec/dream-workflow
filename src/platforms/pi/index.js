@@ -1,27 +1,31 @@
-import path from 'node:path';
-import process from 'node:process';
-import { mkdir, readFile, writeFile } from 'node:fs/promises';
-import { spawnSync } from 'node:child_process';
-import { pathExists } from '../../lib/files.js';
+import { mkdir } from 'node:fs/promises';
 import { installCommonDreamWfFiles, installManagedBlock, installSelectedSkills } from '../shared.js';
 import { installMcpServers } from '../../lib/mcp.js';
+import { readJsonObject, writeJsonObject } from '../../lib/json.js';
+import { defaultPiPluginIds, isPluginInstalled, packageVersionFromSource, resolvePiPlugins } from './catalog.js';
+import { applyRepairs, pinExactVersions } from './repairs.js';
+import { piAgentDir, piNpmDir, piSettingsPath } from './paths.js';
+import { runCommand } from '../../lib/runtime.js';
 
-const PI_PACKAGES = [
-  'npm:pi-tool-display@0.5.0',
-  'npm:pi-nano-context@0.1.1',
-  'npm:pi-cometix-footer@1.1.1',
-  'npm:pi-mcp-adapter@2.15.0',
-  'npm:@arcaneorion/pi-provider-manager@0.3.9',
-];
+// 钉死版本：pi update 会跳过 pinned npm 源，上游变动不会静默冲掉 repairs 里的补丁。
+const PI_CLI = '@earendil-works/pi-coding-agent@0.84.2';
 
-const PI_CLI = '@earendil-works/pi-coding-agent@0.82.1';
-const NANO_CONTEXT_FOOTER = /ctx\.ui\.setFooter\(\(_tui,\s*theme,\s*footerData\)\s*=>\s*\(\{[\s\S]*?renderFooter\(pi,\s*ctx,\s*footerData,\s*width,\s*theme\),[\s\S]*?\}\)\);/;
-const NANO_CONTEXT_FOOTER_CLEANUP = /ctx\.ui\.setFooter\(undefined\);/;
+// 只补缺省的行为项。httpProxy、defaultProvider、defaultModel 属于机器/账号特有，
+// 由用户自行配置，这里不写。
+const SETTINGS_DEFAULTS = {
+  theme: 'dark',
+  defaultProjectTrust: 'always',
+  defaultThinkingLevel: 'high',
+  retry: { enabled: true, maxRetries: 10, baseDelayMs: 2000 }
+};
 
-function run(command, args, options = {}) {
-  const result = spawnSync(command, args, { stdio: 'inherit', ...options });
-  if (result.status !== 0) {
-    throw new Error(`${command} ${args.join(' ')} failed (exit ${result.status ?? 'unknown'}).`);
+// 已是目标版本就不重装，让 update -p pi 不做无谓的全局写入。
+function piCliVersionMatches() {
+  try {
+    const result = runCommand('pi', ['--version'], { stdio: 'pipe', encoding: 'utf8' });
+    return result.stdout?.trim() === packageVersionFromSource(PI_CLI);
+  } catch {
+    return false;
   }
 }
 
@@ -38,95 +42,65 @@ export async function installPiProject(packageRoot, targetRoot, options) {
   return results;
 }
 
-export async function repairNanoContextFooter(agentDir) {
-  const nanoPath = path.join(agentDir, 'npm', 'node_modules', 'pi-nano-context', 'index.ts');
-  if (!(await pathExists(nanoPath))) {
-    throw new Error(`pi-nano-context entrypoint not found: ${nanoPath}`);
+export async function installPi(packageRoot, options = {}) {
+  const agentDir = piAgentDir();
+  const plugins = options.piPlugins ?? resolvePiPlugins(defaultPiPluginIds());
+  const ctx = { agentDir, packageRoot };
+  const results = [];
+
+  if (piCliVersionMatches()) {
+    results.push({ changed: false, action: 'unchanged', path: PI_CLI });
+  } else {
+    runCommand('npm', ['install', '-g', '--ignore-scripts', PI_CLI]);
+    results.push({ changed: true, action: 'installed', path: PI_CLI });
   }
 
-  const source = await readFile(nanoPath, 'utf8');
-  const next = source
-    .replace(NANO_CONTEXT_FOOTER, '')
-    .replace(NANO_CONTEXT_FOOTER_CLEANUP, '');
-
-  if (next !== source) {
-    await writeFile(nanoPath, next, 'utf8');
-    return { changed: true, action: 'updated', path: nanoPath };
-  }
-  if (!source.includes('ctx.ui.setFooter(')) {
-    return { changed: false, action: 'unchanged', path: nanoPath };
-  }
-  throw new Error(`Unable to safely repair pi-nano-context footer conflict: ${nanoPath}`);
-}
-
-export async function repairProviderManagerManifest(agentDir) {
-  const packagePath = path.join(agentDir, 'npm', 'node_modules', '@arcaneorion', 'pi-provider-manager', 'package.json');
-  if (!(await pathExists(packagePath))) {
-    throw new Error(`pi-provider-manager package.json not found: ${packagePath}`);
+  for (const plugin of plugins) {
+    if (await isPluginInstalled(plugin, agentDir)) {
+      results.push({ changed: false, action: 'unchanged', path: plugin.spec });
+      continue;
+    }
+    runCommand('pi', ['install', plugin.spec]);
+    results.push({ changed: true, action: 'installed', path: plugin.spec });
   }
 
-  // 0.3.9 发布包遗漏了本应加入的 pi manifest（上游补丁中的“+”行未正确进入包）。
-  // 显式指定唯一聚合入口，避免 Pi 按约定扫描 extensions/ 后重复或错误加载子模块。
-  const manifest = JSON.parse(await readFile(packagePath, 'utf8'));
-  const expected = ['./index.ts'];
-  if (JSON.stringify(manifest.pi?.extensions) === JSON.stringify(expected)) {
-    return { changed: false, action: 'unchanged', path: packagePath };
-  }
-  manifest.pi = { ...(manifest.pi ?? {}), extensions: expected };
-  await writeFile(packagePath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-  return { changed: true, action: 'updated', path: packagePath };
-}
-
-export async function installPi() {
-  run('npm', ['install', '-g', '--ignore-scripts', PI_CLI]);
-  for (const spec of PI_PACKAGES) run('pi', ['install', spec]);
-
-  const agentDir = process.env.PI_CODING_AGENT_DIR || path.join(process.env.HOME || '', '.pi', 'agent');
-  const footerRepair = await repairNanoContextFooter(agentDir);
-  const providerManagerRepair = await repairProviderManagerManifest(agentDir);
-  return [
-    { changed: true, action: 'installed', path: agentDir },
-    footerRepair,
-    providerManagerRepair,
+  // 先做会改动依赖树的修复，改了才重解析；再做直接改 node_modules 内文件的修复，
+  // 否则 npm install 可能把补过的文件还原。
+  const treeResults = [
+    await pinExactVersions(plugins, agentDir),
+    ...(await applyRepairs(plugins, ctx, 'tree'))
   ];
+  results.push(...treeResults);
+  if (treeResults.some((result) => result.changed)) {
+    runCommand('npm', ['install'], { cwd: piNpmDir(agentDir) });
+    results.push({ changed: true, action: 'reinstalled', path: piNpmDir(agentDir) });
+  }
+
+  results.push(...await applyRepairs(plugins, ctx, 'files'));
+  return results;
 }
 
-export async function ensurePiConfig() {
-  const agentDir = process.env.PI_CODING_AGENT_DIR || path.join(process.env.HOME || '', '.pi', 'agent');
+export async function ensurePiConfig(packageRoot) {
+  const agentDir = piAgentDir();
   await mkdir(agentDir, { recursive: true });
 
-  const settingsPath = path.join(agentDir, 'settings.json');
-  let settings = {};
-  if (await pathExists(settingsPath)) {
-    settings = JSON.parse(await readFile(settingsPath, 'utf8'));
-  }
-  const nextSettings = {
-    ...settings,
-    theme: settings.theme ?? 'dark',
-    defaultProvider: settings.defaultProvider ?? 'agentrouter',
-    defaultModel: settings.defaultModel ?? 'gpt-5.6-sol',
-  };
-  const settingsChanged = JSON.stringify(settings) !== JSON.stringify(nextSettings);
-  if (settingsChanged) {
-    await writeFile(settingsPath, `${JSON.stringify(nextSettings, null, 2)}\n`, 'utf8');
+  const settingsPath = piSettingsPath(agentDir);
+  const settings = await readJsonObject(settingsPath, {});
+  const nextSettings = { ...settings };
+  for (const [key, value] of Object.entries(SETTINGS_DEFAULTS)) {
+    nextSettings[key] = settings[key] ?? value;
   }
 
-  const modelsPath = path.join(agentDir, 'models.json');
-  if (await pathExists(modelsPath)) {
-    return { changed: settingsChanged, action: settingsChanged ? 'updated' : 'unchanged', path: agentDir };
+  const results = [];
+  if (JSON.stringify(settings) === JSON.stringify(nextSettings)) {
+    results.push({ changed: false, action: 'unchanged', path: settingsPath });
+  } else {
+    await writeJsonObject(settingsPath, nextSettings);
+    results.push({ changed: true, action: 'updated', path: settingsPath });
   }
-  const models = {
-    providers: {
-      agentrouter: {
-        baseUrl: 'https://agentrouter.org/v1',
-        api: 'openai-completions',
-        apiKey: '$AGENTROUTER_API_KEY',
-        models: [{ id: 'gpt-5.6-sol', name: 'gpt-5.6-sol' }],
-      },
-    },
-  };
-  await writeFile(modelsPath, `${JSON.stringify(models, null, 2)}\n`, 'utf8');
-  return { changed: true, action: 'created', path: agentDir };
+
+  results.push(await installManagedBlock(packageRoot, agentDir, 'templates/pi/append-system.md', 'APPEND_SYSTEM.md', '<!-- DREAM-WF:START -->', '<!-- DREAM-WF:END -->'));
+  return results;
 }
 
-export { PI_PACKAGES, PI_CLI };
+export { PI_CLI };

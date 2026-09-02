@@ -22,10 +22,11 @@ npx dream-wf
 
 无参数时自动进入 TUI：
 
-1. 第一步选择平台（claude code / codex / opencode / cursor / pi）
-2. 第二步选择要安装的 skills（默认全选）
-3. 第三步选择要配置的 MCP servers（默认全选）
-4. enter 确认安装
+1. 选择平台（claude code / codex / opencode / cursor / pi）
+2. 选择 Pi 插件（仅选了 Pi 时出现，默认全选）
+3. 选择要安装的 skills（默认全选）
+4. 选择要配置的 MCP servers（默认全选）
+5. enter 确认安装
 
 操作键：
 
@@ -66,6 +67,8 @@ npx dream-wf update -p <platform>
 --mcps <id,id,...>                            # 指定 mcp id，默认全部
 --skip-skills                                 # 不安装任何 skill
 --skip-mcps                                   # 不配置任何 mcp
+--pi-plugins <id,id,...>                      # 指定 Pi 插件 id，默认全部（仅 -p pi）
+--skip-pi-plugins                             # 不安装任何 Pi 插件
 --install-deps --developer <name>            # 自动初始化 Trellis
 ```
 
@@ -89,12 +92,18 @@ MCP ids：
 | Codex | `AGENTS.md` | `.codex/skills/` | `PreToolUse` (python, hooks.json) | `.codex/config.toml` |
 | Pi | `AGENTS.md` + Trellis 原生 `.pi/extensions/trellis/` | `.agents/skills/` | Pi extension events | `.mcp.json`（`pi-mcp-adapter`） |
 
-- Pi：可选的终端编码代理安装，以及当前验证过的扩展组合：
-  - `pi-tool-display@0.5.0`
-  - `pi-nano-context@0.1.1`
-  - `pi-cometix-footer@1.1.1`
-  - `pi-mcp-adapter@2.15.0`（Pi 专用 MCP 适配器，按需发现工具，原生读取 `.mcp.json`）
-  - `@arcaneorion/pi-provider-manager@0.3.9`
+- Pi：可选的终端编码代理安装，以及当前验证过的扩展组合（TUI 里可多选，默认全选）。安装器使用 Node.js 内置跨平台 API，支持 Windows、macOS 和 Ubuntu/Linux；Windows 使用 `%USERPROFILE%/.pi/agent`，macOS/Linux 使用 `$HOME/.pi/agent`，也可用 `PI_CODING_AGENT_DIR` 或 `PI_CODING_AGENT_HOME` 覆盖：
+
+| id | 包 | 作用 |
+|----|----|------|
+| `tool-display` | `pi-tool-display@0.5.0` | 辅助显示层：`find`/`ls`、MCP 输出、用户消息框和 thinking 标签 |
+| `nano-context` | `pi-nano-context@0.1.1` | 上下文用量显示 |
+| `cometix-footer` | `pi-cometix-footer@1.1.1` | 底部状态栏 |
+| `mcp-adapter` | `pi-mcp-adapter@2.15.0` | MCP 适配器，原生读取 `.mcp.json` |
+| `provider-manager` | `@arcaneorion/pi-provider-manager@0.3.9` | `/providers` 面板 + roundrobin 故障转移 |
+| `btw` | `pi-btw@0.4.1` | 生成过程中追加提示 |
+| `magic-context` | `@cortexkit/pi-magic-context@0.40.1` | 本地 embedding 上下文检索 |
+| `aft` | `@cortexkit/aft-pi@0.53.0` | 接管 `read`/`write`/`edit`/`grep`/`bash`，并提供索引搜索、结构导航、诊断和安全恢复 |
 
 ## Pi 安装
 
@@ -102,31 +111,79 @@ MCP ids：
 npx dream-wf init -p pi
 ```
 
+只装其中一部分：
+
+```bash
+npx dream-wf init -p pi --pi-plugins nano-context,mcp-adapter
+npx dream-wf init -p pi --skip-pi-plugins
+```
+
 该命令会：
 
-1. 使用 npm 全局安装固定版本的 `@earendil-works/pi-coding-agent`（产品名称统一简称 **Pi**）；
-2. 通过 `pi install` 安装上述 Pi 扩展，其中 `pi-mcp-adapter` 负责 MCP；
-3. 使用 Trellis 最新版原生支持的 `trellis init ... --pi --yes` 初始化项目级 Pi extension、prompts、agents 和共享 skills；
-4. 将选中的 MCP servers 写入项目根 `.mcp.json`，由 `pi-mcp-adapter` 自动读取；
-5. 安装完成后自动修复 `pi-nano-context` 与 `pi-cometix-footer` 的 footer 冲突；
-6. 修复 `@arcaneorion/pi-provider-manager@0.3.9` 发布包遗漏的 `pi.extensions`（上游“+”补丁行发布错误会导致 Pi 启动失败）；
-7. 保留现有 `~/.pi/agent/models.json`，没有配置时写入使用环境变量的 AgentRouter 示例；
+1. 使用 npm 全局安装固定版本的 `@earendil-works/pi-coding-agent`（产品名称统一简称 **Pi**）；已是该版本则跳过；
+2. 通过 `pi install` 安装选中的 Pi 扩展，其中 `pi-mcp-adapter` 负责 MCP；
+3. 把 `~/.pi/agent/npm/package.json` 里这些扩展的依赖范围收紧成精确版本，再重新解析（见下方“版本钉死”）；
+4. 应用扩展适配（见下方“扩展适配”）；
+5. 补全 `~/.pi/agent/settings.json` 的缺省行为项，并安装 `APPEND_SYSTEM.md`；
+6. 使用 Trellis 原生的 `trellis init ... --pi --yes` 初始化项目级 Pi extension、prompts、agents 和共享 skills；
+7. 将选中的 MCP servers 写入项目根 `.mcp.json`，由 `pi-mcp-adapter` 自动读取；
 8. 执行检查：
 
 ```bash
 npx dream-wf doctor -p pi
 ```
 
-API key 不写入安装器或 Git，使用环境变量：
+重复执行是幂等的：没有变化时 install report 全是 `unchanged`，不会产生多余的 npm 写入。
 
-```bash
-export AGENTROUTER_API_KEY=your-key
-```
+### 版本钉死
+
+`pi install npm:foo@1.2.3` 只会把 `^1.2.3` 写进 `~/.pi/agent/npm/package.json`，npm 实际解析的是该范围内的**最新**版本（实测 `pi-mcp-adapter@2.15.0` 会装成 `2.31.0`）。`settings.json` 里的钉版本只能阻止 `pi update`，管不住 npm 解析。
+
+所以 `dream-wf` 会把选中扩展的依赖范围改写成精确版本再重新解析，这样换机器装出来的才是同一组合。`doctor` 会逐个比对实际版本，漂移时报错并提示 `dream-wf update -p pi` 修复。用户自行安装、不在清单内的扩展不受影响。
+
+### 扩展适配
+
+扩展组合中有若干上游兼容问题需要适配，`init` 和 `update` 都会自动应用，`doctor` 会逐项校验：
+
+**`pi-tool-display` 与 AFT 的工具归属** —— AFT 默认接管 `read`、`write`、`edit`、`grep` 和 `bash` 的执行及渲染；`pi-tool-display` 不重复覆盖这些工具，只保留 `find`、`ls`、MCP 输出、用户消息框和 thinking 标签。看到 `edit` 使用 AFT 样式是预期行为，并不表示 `pi-tool-display` 失效。安装器只在配置文件不存在时写入这套默认归属，不覆盖用户已有配置。
+
+**`pi-nano-context` 的 footer 冲突** —— 它会注册自己的 footer，与 `pi-cometix-footer` 抢占底部状态栏。安装后剥掉它的 footer 注册。这是直接改 `node_modules` 内的文件，任何一次 `pi install`/`pi update` 都会还原，重跑 `dream-wf update -p pi` 即可。
+
+**`pi-cometix-footer` 的窄窗口布局** —— 上游会把整个 footer 截成一行，终端变窄时后半段溢出并被遮挡。安装器改为按当前宽度保留 ANSI 样式地自动换行，同时隐藏重复的 `⚡ ...% .../...` 上下文段和 Magic Context 的 `mc: ... · idle` 状态。补丁带版本标记，`doctor` 不会把上游仅添加了同名 import 的情况误判为已修复。
+
+**`@arcaneorion/pi-provider-manager` 的多实例问题** —— 该发布包的 `package.json` 没有 `pi` 字段，Pi 于是按约定扫描包内 `extensions/` 目录，把 6 个子模块当成 6 个独立扩展分别加载。各子模块拿到的 `ExtensionAPI` 实例互不相同，`pi.events` 无法互通，面板保存配置后触发不了轮询引擎热重载。修复分两步：
+
+- `settings.json` 中该包的条目写成 `{ "source": ..., "extensions": [] }`，关掉包内的约定扫描；
+- 写入 `~/.pi/agent/extensions/providers.ts`，单点转发到包的 `index.ts`。
+
+补丁都在包外，`npm install` / `pi update` 覆盖不掉。
+
+**Intel Mac 的 onnxruntime** —— 仅在 `darwin/x64` 且选装了 `magic-context` 时生效。`@huggingface/transformers@4.2.0` 依赖 `onnxruntime-node@1.24.3`，而 1.22 之后的发布包只带 `darwin/arm64` 二进制，没有 `darwin/x64`。安装器会在 `~/.pi/agent/npm/package.json` 写入 overrides 把它压回 `1.21.0`。Apple Silicon 和 Linux 上不写这条。Windows 不需要这条兼容性降级。对于 Windows 的 hook，安装器不依赖 Unix 可执行权限，并使用 `python`/`python3` 和 npm 的 `.cmd` shim 自动解析。
+
+### 模型配置
+
+`dream-wf` **不管** `~/.pi/agent/models.json`，也不写 `defaultProvider` / `defaultModel` / `httpProxy` —— 这些属于账号和机器特有配置。API key 不写入安装器或 Git。装完后用 Pi 的 `/providers` 面板自行配置 provider 和模型。
 
 升级 Pi 及扩展时执行：
 
 ```bash
 npx dream-wf update -p pi
+```
+
+## 平台前置条件
+
+三种平台都需要：
+
+- Node.js >= 18（建议使用当前 LTS）
+- npm
+- Pi 使用 `npx dream-wf init -p pi` 时，会自动安装固定版本 Pi CLI
+- 若使用 Trellis 自动初始化，需要 Python >= 3.9；Windows 请在安装 Python 时勾选加入 PATH
+- 使用 `grok-search-mcp` 需要 `uvx`；Windows、macOS、Ubuntu 都应按官方文档安装 uv
+
+无 TTY 的 CI 或脚本环境不要调用无参数 TUI，改用显式 CLI，例如：
+
+```bash
+npx dream-wf init -p pi --yes
 ```
 
 ## Trellis

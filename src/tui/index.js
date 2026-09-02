@@ -8,6 +8,10 @@ import {
 } from "../lib/catalog.js";
 import { detectTrellis } from "../lib/trellis.js";
 import { trellisPlatformFlag } from "../lib/platforms.js";
+import {
+  PI_PLUGIN_CATALOG,
+  defaultPiPluginIds,
+} from "../platforms/pi/catalog.js";
 
 const COLORS = {
   reset: "\x1B[0m",
@@ -61,6 +65,9 @@ function renderRadioList(items, cursorIndex) {
 // 在 raw 模式下读取按键。返回标准化按键名。
 // 方向键转义序列 \x1B[A/B/C/D 可能分多个 data 事件到达，这里做拼接。
 function readKeystroke() {
+  if (!process.stdin.isTTY || typeof process.stdin.setRawMode !== "function") {
+    throw new Error("交互式安装需要真实终端；CI、管道或不支持 raw mode 的控制台请使用 dream-wf init -p <platform>。");
+  }
   return new Promise((resolve) => {
     let buffer = "";
     function onRaw(data) {
@@ -95,7 +102,9 @@ function readKeystroke() {
 }
 
 function stopRaw() {
-  process.stdin.setRawMode(false);
+  if (typeof process.stdin.setRawMode === "function") {
+    process.stdin.setRawMode(false);
+  }
   process.stdin.pause();
   process.stdin.removeAllListeners("data");
 }
@@ -295,7 +304,19 @@ async function textInput({ title, hint, placeholder }) {
   }
 }
 
-function renderSummary(platform, skills, mcps, mode, trellisAction) {
+const STEP_NUMERALS = ["一", "二", "三", "四", "五", "六"];
+
+// 步骤数随平台而变（Pi 多一步选插件），且 Trellis 已就绪时会整步跳过，
+// 所以标题按实际渲染顺序生成，不写死。
+function createStepper() {
+  let index = 0;
+  return (title) => {
+    index += 1;
+    return `第${STEP_NUMERALS[index - 1] ?? index}步 · ${title}`;
+  };
+}
+
+function renderSummary(platform, skills, mcps, mode, trellisAction, piPlugins) {
   const lines = [];
   lines.push(colorize("即将安装:", COLORS.magenta));
   lines.push(`  平台: ${colorize(PLATFORM_LABELS[platform], COLORS.bold)}`);
@@ -303,6 +324,17 @@ function renderSummary(platform, skills, mcps, mode, trellisAction) {
 
   if (trellisAction) {
     lines.push(`  Trellis: ${colorize(trellisAction, COLORS.cyan)}`);
+  }
+
+  if (piPlugins) {
+    lines.push(`  Pi 插件 (${piPlugins.length}):`);
+    if (piPlugins.length === 0) {
+      lines.push(colorize("    (无)", COLORS.dim));
+    } else {
+      piPlugins.forEach((p) =>
+        lines.push(`    ${colorize("✓", COLORS.green)} ${p.name}`),
+      );
+    }
   }
 
   lines.push(`  Skills (${skills.length}):`);
@@ -324,20 +356,33 @@ function renderSummary(platform, skills, mcps, mode, trellisAction) {
   return lines.join("\n");
 }
 
-// 交互式安装向导：平台 -> Trellis 基础依赖 -> skill -> mcp -> 确认安装。
+  // 交互式安装向导：平台 -> Pi 插件（可选）-> Trellis 基础依赖 -> skill -> mcp -> 确认安装。
 export async function runInteractive() {
-  // 第一步：选择平台。
+  const step = createStepper();
+
+  // 选择平台。
   const platformItems = [...SUPPORTED_PLATFORMS].map((id) => ({
     id,
     label: PLATFORM_LABELS[id],
   }));
   const platform = await singleSelect({
-    title: "第一步 · 选择目标平台",
+    title: step("选择目标平台"),
     hint: "选择你要安装 dream-wf 的 AI 编码平台。",
     items: platformItems,
   });
 
-  // 第二步：Trellis 基础依赖。Pi 也使用 Trellis 原生 --pi 项目资产。
+  // Pi 独有：先定这台机器上装哪些 Pi 扩展（全局安装，与项目无关）。
+  let piPluginIds;
+  if (platform === "pi") {
+    piPluginIds = await multiSelect({
+      title: step("选择要安装的 Pi 插件"),
+      hint: "全局安装到 Pi agent 目录，版本已钉死在实测通过的组合，默认全选。",
+      items: PI_PLUGIN_CATALOG,
+      defaults: defaultPiPluginIds(),
+    });
+  }
+
+  // Trellis 基础依赖。Pi 也使用 Trellis 原生 --pi 项目资产。
   const trellisState = await detectTrellis(process.cwd());
   let trellisAction = null;
   let installDeps = false;
@@ -348,7 +393,7 @@ export async function runInteractive() {
   } else if (!trellisState.cli) {
     // trellis CLI 未安装。
     const installChoice = await singleSelect({
-      title: "第二步 · Trellis 基础依赖",
+      title: step("Trellis 基础依赖"),
       hint: `检测到 trellis CLI 未安装。是否自动安装 @mindfoldhq/trellis？`,
       items: [
         { id: "install", label: "自动安装 trellis CLI 并初始化" },
@@ -375,7 +420,7 @@ export async function runInteractive() {
   } else {
     // trellis CLI 已安装但项目未初始化。
     const initChoice = await singleSelect({
-      title: "第二步 · Trellis 基础依赖",
+      title: step("Trellis 基础依赖"),
       hint: `trellis CLI 已安装，但当前项目未初始化。是否初始化？`,
       items: [
         { id: "init", label: "初始化 Trellis 项目" },
@@ -401,17 +446,17 @@ export async function runInteractive() {
     }
   }
 
-  // 第三步：选择 skills。
+  // 选择 skills。
   const skillIds = await multiSelect({
-    title: "第三步 · 选择要安装的 Skills",
+    title: step("选择要安装的 Skills"),
     hint: "这些是 dream-wf 的 Trellis patch skills，默认全选。",
     items: SKILL_CATALOG,
     defaults: defaultSkillIds(),
   });
 
-  // 第四步：选择 MCPs。
+  // 选择 MCPs。
   const mcpIds = await multiSelect({
-    title: "第四步 · 选择要配置的 MCP Servers",
+    title: step("选择要配置的 MCP Servers"),
     hint: "这些 MCP 会被写入对应平台的 mcp 配置文件，默认全选。",
     items: MCP_CATALOG,
     defaults: defaultMcpIds(),
@@ -419,11 +464,16 @@ export async function runInteractive() {
 
   const skills = SKILL_CATALOG.filter((item) => skillIds.includes(item.id));
   const mcps = MCP_CATALOG.filter((item) => mcpIds.includes(item.id));
+  const piPlugins = piPluginIds
+    ? PI_PLUGIN_CATALOG.filter((item) => piPluginIds.includes(item.id))
+    : undefined;
   const mode = "strict";
 
   // 确认安装。
   process.stdout.write("\x1B[2J\x1B[H");
-  process.stdout.write(renderSummary(platform, skills, mcps, mode, trellisAction));
+  process.stdout.write(
+    renderSummary(platform, skills, mcps, mode, trellisAction, piPlugins),
+  );
   process.stdout.write("\n\n");
 
   const confirmed = await confirmPrompt("确认开始安装？");
@@ -439,6 +489,8 @@ export async function runInteractive() {
     mcpIds,
     skills,
     mcps,
+    piPluginIds,
+    piPlugins,
     installDeps,
     developer,
   };

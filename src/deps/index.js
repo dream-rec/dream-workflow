@@ -1,41 +1,35 @@
-import { spawnSync } from 'node:child_process';
 import path from 'node:path';
+import process from 'node:process';
 import { pathExists, readTextIfExists } from '../lib/files.js';
-import { commandExists } from '../lib/trellis.js';
+import { commandExists, pythonCommand, runCommand } from '../lib/runtime.js';
 import { readMcpServers, mcpConfigExists } from '../lib/mcp.js';
 import { MCP_CATALOG } from '../lib/catalog.js';
+import { readInstalledPluginIds, resolvePiPlugins } from '../platforms/pi/catalog.js';
+import { checkPinnedVersions, checkRepairs } from '../platforms/pi/repairs.js';
+import { piAgentDir, piSettingsPath } from '../platforms/pi/paths.js';
+import { PI_CLI } from '../platforms/pi/index.js';
 
 export async function checkDependencies(rootDir, platform) {
   const checks = [];
 
   checks.push(binaryCheck('node', 'Node.js >= 18 is required.'));
   if (platform === 'pi') {
-    checks.push(binaryCheck('pi', 'Install with: npm install -g --ignore-scripts @earendil-works/pi-coding-agent@0.82.1'));
+    checks.push(binaryCheck('pi', `Install with: npm install -g --ignore-scripts ${PI_CLI}`));
     checks.push(binaryCheck('trellis', 'Install with: npm install -g @mindfoldhq/trellis@latest'));
-    const agentDir = process.env.PI_CODING_AGENT_DIR || path.join(process.env.HOME || '', '.pi', 'agent');
-    for (const packageName of ['pi-tool-display', 'pi-nano-context', 'pi-cometix-footer', 'pi-mcp-adapter', '@arcaneorion/pi-provider-manager']) {
-      checks.push(await fileCheck(path.join(agentDir, 'npm', 'node_modules', packageName, 'package.json'), `Pi package ${packageName}`));
+
+    // 以 settings.json 里实际登记的包为准，用户没选装的插件不会被误报成缺失。
+    const agentDir = piAgentDir();
+    const plugins = resolvePiPlugins(await readInstalledPluginIds(agentDir));
+    if (plugins.length === 0) {
+      checks.push({
+        name: 'Pi plugins',
+        ok: false,
+        hint: `No dream-wf Pi plugins registered in ${piSettingsPath(agentDir)}. Run dream-wf init -p pi.`
+      });
     }
-    checks.push(await fileCheck(path.join(agentDir, 'models.json'), 'Pi models.json'));
-    const nanoPath = path.join(agentDir, 'npm', 'node_modules', 'pi-nano-context', 'index.ts');
-    const nanoSource = await readTextIfExists(nanoPath);
-    checks.push({
-      name: 'Pi footer conflict repair',
-      ok: Boolean(nanoSource) && !nanoSource.includes('ctx.ui.setFooter('),
-      hint: `pi-nano-context still registers a competing footer. Run dream-wf update -p pi to repair ${nanoPath}`
-    });
-    const providerManagerPath = path.join(agentDir, 'npm', 'node_modules', '@arcaneorion', 'pi-provider-manager', 'package.json');
-    let providerManagerManifest;
-    try {
-      providerManagerManifest = JSON.parse((await readTextIfExists(providerManagerPath)) ?? 'null');
-    } catch {
-      providerManagerManifest = null;
-    }
-    checks.push({
-      name: 'Pi provider-manager package repair',
-      ok: providerManagerManifest?.pi?.extensions?.length === 1 && providerManagerManifest.pi.extensions[0] === './index.ts',
-      hint: `pi-provider-manager has the known broken npm manifest. Run dream-wf update -p pi to repair ${providerManagerPath}`
-    });
+    checks.push(...await checkPinnedVersions(plugins, agentDir));
+    checks.push(...await checkRepairs(plugins, { agentDir }));
+
     checks.push(await fileCheck(path.join(rootDir, '.trellis'), 'Trellis project directory'));
     checks.push(await fileCheck(path.join(rootDir, '.pi', 'extensions', 'trellis', 'index.ts'), 'Trellis Pi extension'));
     checks.push(await contentCheck(path.join(rootDir, 'AGENTS.md'), '<!-- DREAM-WF:START -->', 'Pi dream-wf entry block'));
@@ -46,7 +40,7 @@ export async function checkDependencies(rootDir, platform) {
     return checks;
   }
 
-  checks.push(binaryCheck('python3', 'Python >= 3.9 is required by Trellis.'));
+  checks.push(pythonCheck());
   checks.push(binaryCheck('trellis', 'Install with: npm install -g @mindfoldhq/trellis@latest'));
   checks.push(binaryCheck('uvx', 'Required for grok-search-mcp. Install uv: https://docs.astral.sh/uv/'));
 
@@ -133,6 +127,17 @@ function binaryCheck(command, hint) {
   };
 }
 
+function pythonCheck() {
+  const command = pythonCommand();
+  return {
+    name: 'python',
+    ok: Boolean(command),
+    hint: process.platform === 'win32'
+      ? 'Python >= 3.9 is required. Install it and enable Add python.exe to PATH.'
+      : 'Python >= 3.9 is required. Install python3.'
+  };
+}
+
 async function fileCheck(filePath, label) {
   return {
     name: label,
@@ -174,11 +179,5 @@ async function secretScan(rootDir) {
 }
 
 export function installTrellisIfRequested() {
-  const result = spawnSync('npm', ['install', '-g', '@mindfoldhq/trellis@latest'], {
-    stdio: 'inherit'
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`Failed to install Trellis with npm, exit code ${result.status ?? 'unknown'}.`);
-  }
+  runCommand('npm', ['install', '-g', '@mindfoldhq/trellis@latest']);
 }

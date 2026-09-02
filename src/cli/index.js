@@ -1,5 +1,6 @@
 import process from "node:process";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import {
   assertSupportedPlatform,
@@ -23,12 +24,20 @@ import { installCodex } from "../platforms/codex/index.js";
 import { runDoctor, formatDoctorReport } from "../doctor/index.js";
 import { runInteractive } from "../tui/index.js";
 import { installPi, ensurePiConfig, installPiProject } from "../platforms/pi/index.js";
+import {
+  PI_PLUGIN_CATALOG,
+  defaultPiPluginIds,
+  resolvePiPlugins,
+} from "../platforms/pi/catalog.js";
 
 const packageRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "..",
   "..",
 );
+const packageVersion = JSON.parse(
+  readFileSync(path.join(packageRoot, "package.json"), "utf8"),
+).version;
 
 export async function run(argv) {
   // 无参数或仅 --help 以外无 subcommand 时，进入交互式 TUI。
@@ -104,13 +113,21 @@ export async function run(argv) {
 async function init(rootDir, options) {
   // Pi 同时安装全局 CLI/扩展，并用 Trellis 原生 --pi 生成项目资产。
   if (options.platform === "pi") {
-    writeOutput(formatBanner());
     const skillIds = options.skillIds ?? defaultSkillIds();
     const mcpIds = options.mcpIds ?? defaultMcpIds();
+    const piPluginIds = options.piPluginIds ?? defaultPiPluginIds();
+    assertKnownPiPlugins(piPluginIds);
+    writeOutput(formatBanner());
     const skills = resolveSkills(options.skills ? options.skills.map((s) => s.id) : skillIds);
     const mcps = resolveMcps(options.mcps ? options.mcps.map((m) => m.id) : mcpIds);
-    const initOptions = { ...options, mode: options.mode ?? "strict", skills, mcps };
-    const results = [...await installPi(), await ensurePiConfig()];
+    const piPlugins = resolvePiPlugins(
+      options.piPlugins ? options.piPlugins.map((p) => p.id) : piPluginIds,
+    );
+    const initOptions = { ...options, mode: options.mode ?? "strict", skills, mcps, piPlugins };
+    const results = [
+      ...(await installPi(packageRoot, initOptions)),
+      ...(await ensurePiConfig(packageRoot)),
+    ];
     const trellis = await ensureTrellisInitialized(rootDir, initOptions);
     if (!trellis.initialized) {
       writeOutput([
@@ -223,6 +240,11 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--skip-pi-plugins") {
+      options.piPluginIds = [];
+      continue;
+    }
+
     if (arg === "-p" || arg === "--platform") {
       const value = rest[index + 1];
       if (!value || value.startsWith("-")) {
@@ -275,10 +297,30 @@ function parseArgs(argv) {
       continue;
     }
 
+    if (arg === "--pi-plugins") {
+      options.piPluginIds = readOptionValue(arg, rest, index)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      index += 1;
+      continue;
+    }
+
     throw new Error(`Unexpected argument: ${arg}`);
   }
 
   return { command, options };
+}
+
+// 未知 id 会被静默跳过，装不上又不报错，所以这里显式拦一道。
+function assertKnownPiPlugins(ids) {
+  const known = new Set(PI_PLUGIN_CATALOG.map((plugin) => plugin.id));
+  const unknown = ids.filter((id) => !known.has(id));
+  if (unknown.length > 0) {
+    throw new Error(
+      `Unknown Pi plugin id: ${unknown.join(", ")}. Available: ${[...known].join(", ")}.`,
+    );
+  }
 }
 
 function readOptionValue(arg, rest, index) {
@@ -312,7 +354,7 @@ function formatBanner() {
     "██║    ██║██╔═══██╗ ██╔════╝  ██╔═══██╗ ██║╚██╔╝██║",
     "███████╔╝ ██║   ██║ ███████╗  ██║   ██║ ██║ ╚═╝ ██║",
     "╚══════╝  ╚═╝   ╚═╝ ╚══════╝  ╚═╝   ╚═╝ ╚═╝     ╚═╝",
-    "  Dream WorkFlow v0.1.3",
+    `  Dream WorkFlow v${packageVersion}`,
   ].join("\n");
 
   if (!process.stdout.isTTY || process.env.NO_COLOR) {
@@ -324,7 +366,7 @@ function formatBanner() {
 
 function helpText() {
   return [
-    "dream-wf v0.1.3 · Trellis workflow 安装聚合器",
+    `dream-wf v${packageVersion} · Trellis workflow 安装聚合器`,
     "",
     "Usage:",
     "  dream-wf                         # 交互式 TUI（推荐）",
@@ -340,6 +382,9 @@ function helpText() {
     "  --mcps <id,id,...>              指定要配置的 mcp id（默认全部）",
     "  --skip-skills                    不安装任何 skill",
     "  --skip-mcps                     不配置任何 mcp",
+    "  --pi-plugins <id,id,...>        指定要安装的 Pi 插件 id（默认全部，仅 -p pi）",
+    "  --skip-pi-plugins               不安装任何 Pi 插件",
+    "  --yes                            非交互模式下确认安装",
     "  --install-deps --developer <n>  自动初始化 Trellis",
     "",
     "Skill ids:",
@@ -348,10 +393,14 @@ function helpText() {
     "MCP ids:",
     "  fast-context, grok-search",
     "",
+    "Pi plugin ids:",
+    `  ${PI_PLUGIN_CATALOG.map((plugin) => plugin.id).join(", ")}`,
+    "",
     "Examples:",
     "  npx dream-wf",
     "  npx dream-wf init -p cursor",
     "  npx dream-wf init -p pi",
+    "  npx dream-wf init -p pi --pi-plugins nano-context,mcp-adapter",
     "  npx dream-wf init -p claude --skills trellis-dream-wf-patch --mcps fast-context",
     "  npx dream-wf doctor -p codex",
   ].join("\n");

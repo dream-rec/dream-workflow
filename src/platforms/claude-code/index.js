@@ -1,12 +1,17 @@
 import path from 'node:path';
+import process from 'node:process';
 import { readFile, chmod } from 'node:fs/promises';
 import { readJsonObject, writeJsonObject, pushUniqueByCommand } from '../../lib/json.js';
 import { writeIfChanged } from '../../lib/files.js';
 import { installCommonDreamWfFiles, installManagedBlock, installSelectedSkills } from '../shared.js';
 import { installMcpServers } from '../../lib/mcp.js';
+import { projectPythonCommand } from '../../lib/runtime.js';
 
-const CLAUDE_GUARD_COMMAND = 'python3 -X utf8 .claude/hooks/dream-wf-guard.py';
-const LEGACY_CLAUDE_GUARD_COMMAND = 'python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/dream-wf-guard.py"';
+const LEGACY_CLAUDE_GUARD_COMMANDS = [
+  'python3 "$CLAUDE_PROJECT_DIR/.claude/hooks/dream-wf-guard.py"',
+  'python3 -X utf8 .claude/hooks/dream-wf-guard.py',
+  'python -X utf8 .claude/hooks/dream-wf-guard.py'
+];
 
 export async function installClaudeCode(packageRoot, targetRoot, options) {
   const results = [];
@@ -32,23 +37,26 @@ async function installClaudeHook(packageRoot, targetRoot) {
   const targetPath = path.join(targetRoot, '.claude', 'hooks', 'dream-wf-guard.py');
   const contents = await readFile(sourcePath, 'utf8');
   const result = await writeIfChanged(targetPath, contents);
-  await chmod(targetPath, 0o755);
+  if (process.platform !== 'win32') {
+    await chmod(targetPath, 0o755);
+  }
   return result;
 }
 
 async function mergeClaudeSettings(rootDir) {
+  const command = projectPythonCommand('.claude/hooks/dream-wf-guard.py');
   const settingsPath = path.join(rootDir, '.claude', 'settings.json');
   const settings = await readJsonObject(settingsPath, {});
   settings.hooks = settings.hooks ?? {};
   settings.hooks.PreToolUse = settings.hooks.PreToolUse ?? [];
 
-  const migrated = replaceHookCommand(settings.hooks.PreToolUse, LEGACY_CLAUDE_GUARD_COMMAND, CLAUDE_GUARD_COMMAND);
+  const migrated = LEGACY_CLAUDE_GUARD_COMMANDS.some((legacy) => replaceHookCommand(settings.hooks.PreToolUse, legacy, command));
   const added = pushUniqueByCommand(settings.hooks.PreToolUse, {
     matcher: '*',
     hooks: [
       {
         type: 'command',
-        command: CLAUDE_GUARD_COMMAND,
+        command,
         timeout: 10
       }
     ]

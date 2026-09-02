@@ -1,7 +1,7 @@
 import path from 'node:path';
 import process from 'node:process';
-import { spawnSync } from 'node:child_process';
 import { appendBlockOnce, pathExists, readTextIfExists, writeTextFile } from './files.js';
+import { runCommand, commandExists } from './runtime.js';
 import { trellisPlatformFlag } from './platforms.js';
 
 const DREAM_WF_MARKER = '<!-- dream-wf:profile:v1 -->';
@@ -45,13 +45,7 @@ export async function ensureTrellisInitialized(rootDir, options) {
   // trellis CLI 未安装时，先 npm install -g。
   if (!state.cli) {
     writeOutput('Installing @mindfoldhq/trellis globally...');
-    const installResult = spawnSync('npm', ['install', '-g', '@mindfoldhq/trellis@latest'], {
-      stdio: 'inherit'
-    });
-
-    if (installResult.status !== 0) {
-      throw new Error(`Failed to install trellis with npm, exit code ${installResult.status ?? 'unknown'}.`);
-    }
+    runCommand('npm', ['install', '-g', '@mindfoldhq/trellis@latest']);
 
     // 重新检测。
     state.cli = commandExists('trellis');
@@ -60,14 +54,7 @@ export async function ensureTrellisInitialized(rootDir, options) {
     }
   }
 
-  const result = spawnSync('trellis', ['init', '-u', options.developer, platformFlag, '--yes'], {
-    cwd: rootDir,
-    stdio: 'inherit'
-  });
-
-  if (result.status !== 0) {
-    throw new Error(`trellis init failed with exit code ${result.status ?? 'unknown'}.`);
-  }
+  runCommand('trellis', ['init', '-u', options.developer, platformFlag, '--yes'], { cwd: rootDir });
 
   return { ...(await detectTrellis(rootDir)), initialized: true, initCommand };
 }
@@ -91,12 +78,6 @@ export async function writeSpecPolicy(rootDir, name, contents) {
   return writeTextFile(path.join(rootDir, '.trellis', 'spec', 'guides', name), contents);
 }
 
-export function commandExists(command) {
-  const result = spawnSync('sh', ['-c', 'command -v "$1" >/dev/null 2>&1', 'sh', command], {
-    stdio: 'ignore'
-  });
-  return result.status === 0;
-}
 
 function dreamWorkflowBlock() {
   return [

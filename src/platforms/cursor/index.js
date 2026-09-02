@@ -1,4 +1,5 @@
 import path from 'node:path';
+import process from 'node:process';
 import { readFile, chmod } from 'node:fs/promises';
 import { readJsonObject, writeJsonObject, pushUniqueByCommand } from '../../lib/json.js';
 import { writeIfChanged } from '../../lib/files.js';
@@ -29,7 +30,9 @@ async function installCursorHook(packageRoot, targetRoot) {
   const targetPath = path.join(targetRoot, '.cursor', 'hooks', 'dream-wf-guard.py');
   const contents = await readFile(sourcePath, 'utf8');
   const result = await writeIfChanged(targetPath, contents);
-  await chmod(targetPath, 0o755);
+  if (process.platform !== 'win32') {
+    await chmod(targetPath, 0o755);
+  }
   return result;
 }
 

@@ -1,13 +1,18 @@
 import path from 'node:path';
+import process from 'node:process';
 import { readFile, chmod } from 'node:fs/promises';
 import { readJsonObject, writeJsonObject, pushUniqueByCommand } from '../../lib/json.js';
 import { writeIfChanged, readTextIfExists, writeTextFile } from '../../lib/files.js';
 import { installCommonDreamWfFiles, installManagedBlock, installSelectedSkills } from '../shared.js';
 import { installMcpServers } from '../../lib/mcp.js';
+import { projectPythonCommand } from '../../lib/runtime.js';
 
 const CODEX_GUARD_MATCHER = 'Bash|Shell|shell|apply_patch|Edit|Write';
-const CODEX_GUARD_COMMAND = 'python3 -X utf8 .codex/hooks/dream-wf-guard.py';
-const LEGACY_CODEX_GUARD_COMMAND = 'python3 "$CODEX_PROJECT_DIR/.codex/hooks/dream-wf-guard.py"';
+const LEGACY_CODEX_GUARD_COMMANDS = [
+  'python3 "$CODEX_PROJECT_DIR/.codex/hooks/dream-wf-guard.py"',
+  'python3 -X utf8 .codex/hooks/dream-wf-guard.py',
+  'python -X utf8 .codex/hooks/dream-wf-guard.py'
+];
 
 // Codex CLI 读取项目根的 AGENTS.md 作为入口规则。
 // Codex 支持 PreToolUse 阻塞式 hook，配置在 .codex/hooks.json（和 config.toml [hooks] 段等效）。
@@ -38,7 +43,9 @@ async function installCodexHook(packageRoot, targetRoot) {
   const targetPath = path.join(targetRoot, '.codex', 'hooks', 'dream-wf-guard.py');
   const contents = await readFile(sourcePath, 'utf8');
   const result = await writeIfChanged(targetPath, contents);
-  await chmod(targetPath, 0o755);
+  if (process.platform !== 'win32') {
+    await chmod(targetPath, 0o755);
+  }
   return result;
 }
 
@@ -63,18 +70,19 @@ async function ensureCodexHooksFeature(rootDir) {
 // { "hooks": { "PreToolUse": [ { "matcher": "...", "hooks": [ { "type": "command", "command": "...", "timeout": 10 } ] } ] } }
 // Codex 的 matcher 是正则匹配 tool_name，用 Bash|Shell|apply_patch|Edit|Write 匹配变更类工具。
 async function mergeCodexHooks(rootDir) {
+  const command = projectPythonCommand('.codex/hooks/dream-wf-guard.py');
   const hooksPath = path.join(rootDir, '.codex', 'hooks.json');
   const hooks = await readJsonObject(hooksPath, { hooks: {} });
   hooks.hooks = hooks.hooks ?? {};
   hooks.hooks.PreToolUse = hooks.hooks.PreToolUse ?? [];
 
-  const migrated = replaceHookCommand(hooks.hooks.PreToolUse, LEGACY_CODEX_GUARD_COMMAND, CODEX_GUARD_COMMAND);
+  const migrated = LEGACY_CODEX_GUARD_COMMANDS.some((legacy) => replaceHookCommand(hooks.hooks.PreToolUse, legacy, command));
   const added = pushUniqueByCommand(hooks.hooks.PreToolUse, {
     matcher: CODEX_GUARD_MATCHER,
     hooks: [
       {
         type: 'command',
-        command: CODEX_GUARD_COMMAND,
+        command,
         timeout: 10
       }
     ]
